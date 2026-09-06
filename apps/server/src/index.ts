@@ -7,7 +7,7 @@ import fastifyCors from '@fastify/cors';
 import { Server as IOServer, type Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import {
-  MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, rollDice, toClientState,
+  MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, toClientState,
   updateSettings, type Action, type GameEvent, type GameState, type TokenId,
 } from '@nandepoly/engine';
 import { ActionSchema, ChatSchema, CreateRoomSchema, JoinRoomSchema, RejoinSchema, SettingsSchema } from './protocol';
@@ -64,11 +64,7 @@ const io = new IOServer(app.server, { cors: { origin: true }, pingInterval: 1000
 
 interface Session { roomCode: string; playerId: string | null; playerToken: string; name: string }
 const sessions = new Map<string, Session>(); // socket.id → sesión
-const timers = new Map<string, { turn?: NodeJS.Timeout; auction?: NodeJS.Timeout; bot?: NodeJS.Timeout; limit?: NodeJS.Timeout; phase?: NodeJS.Timeout; go?: NodeJS.Timeout }>();
-const CHALLENGE_ACCEPT_SECONDS = Number(process.env.CHALLENGE_ACCEPT_SECONDS ?? 15);
-const RENT_OFFER_SECONDS = Number(process.env.RENT_OFFER_SECONDS ?? 20);
-const CASINO_IDLE_SECONDS = Number(process.env.CASINO_IDLE_SECONDS ?? 75);
-const CHALLENGE_PLAY_SECONDS = Number(process.env.CHALLENGE_PLAY_SECONDS ?? 45);
+const timers = new Map<string, { turn?: NodeJS.Timeout; auction?: NodeJS.Timeout; bot?: NodeJS.Timeout; limit?: NodeJS.Timeout }>();
 
 function ok<T>(data: T) { return { ok: true as const, ...data }; }
 function fail(message: string) { return { ok: false as const, error: message }; }
@@ -79,19 +75,7 @@ function roomView(room: Room) {
     chat: room.chat.slice(-100),
     auctionDeadline: room.auctionDeadline,
     turnDeadline: room.turnDeadline,
-    phaseDeadline: room.phaseDeadline,
   };
-}
-
-/** Aplica una acción generada por el servidor (temporizadores) sin romper si el estado cambió. */
-function serverAction(room: Room, action: Action, note?: string) {
-  try {
-    const prev = room.state;
-    room.state = applyAction(room.state, action).state;
-    rooms.touch(room);
-    afterStateChange(room, prev);
-    broadcast(room, note ? [{ type: 'info', text: note }] : []);
-  } catch (e) { app.log.warn(e); }
 }
 
 function broadcast(room: Room, events: GameEvent[] = []) {
@@ -181,35 +165,6 @@ function afterStateChange(room: Room, before: GameState) {
     }, Math.max(0, remaining));
   }
   if (s.phase !== 'PLAYING' && t.limit) { clearTimeout(t.limit); t.limit = undefined; }
-
-  // Temporizadores de fase: desafío pendiente / en juego, oferta de alquiler, casino, señal del tereré
-  if (t.phase) { clearTimeout(t.phase); t.phase = undefined; }
-  if (t.go) { clearTimeout(t.go); t.go = undefined; }
-  room.phaseDeadline = null;
-  if (s.phase === 'PLAYING') {
-    const arm = (secs: number, action: Action, note: string) => {
-      room.phaseDeadline = Date.now() + secs * 1000;
-      t.phase = setTimeout(() => { t.phase = undefined; serverAction(room, action, note); }, secs * 1000);
-    };
-    if (s.turnPhase === 'CHALLENGE' && s.challenge) {
-      const c = s.challenge;
-      if (c.status === 'pending') arm(CHALLENGE_ACCEPT_SECONDS, { type: 'CHALLENGE_REJECT', playerId: c.toId! }, 'El desafío venció sin respuesta.');
-      else if (c.status === 'pick') arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
-      else if (c.status === 'playing') {
-        arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
-        if (c.kind === 'terere' && !c.data.go) {
-          const wait = 1500 + Math.floor(Math.random() * 3000);
-          t.go = setTimeout(() => { t.go = undefined; serverAction(room, { type: 'CHALLENGE_GO', playerId: s.hostId }); }, wait);
-        }
-      }
-    } else if (s.turnPhase === 'RENT_OFFER' && s.rentOffer) {
-      const o = s.rentOffer;
-      if (!o.proposed) arm(RENT_OFFER_SECONDS, { type: 'RENT_PAY', playerId: o.payerId }, 'Se pagó el alquiler por tiempo.');
-      else arm(RENT_OFFER_SECONDS, { type: 'RENT_DON_REJECT', playerId: o.ownerId }, 'El dueño no respondió: se cobra el alquiler normal.');
-    } else if (s.turnPhase === 'CASINO' && s.casino) {
-      arm(CASINO_IDLE_SECONDS, { type: 'CASINO_LEAVE', playerId: s.casino.playerId }, 'El Casino cerró por inactividad.');
-    }
-  }
 
   // Bots
   if (t.bot) { clearTimeout(t.bot); t.bot = undefined; }
@@ -392,27 +347,6 @@ io.on('connection', (socket: Socket) => {
       cb?.(ok({}));
     } catch (e) { handleError(e, cb); }
   });
-
-  // Herramientas de prueba (solo con DEBUG_TOOLS=1): fijar posición y próximos dados para reproducir situaciones
-  if (process.env.DEBUG_TOOLS === '1') {
-    socket.on('debug:set', (raw, cb) => {
-      try {
-        const sess = sessions.get(socket.id);
-        const room = sess && rooms.get(sess.roomCode);
-        if (!room || !sess?.playerId) return cb?.(fail('Sin sala.'));
-        const st = structuredClone(room.state);
-        if (typeof raw?.position === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.position = raw.position; }
-        if (Array.isArray(raw?.dice)) {
-          for (let seed = 1; seed < 500000; seed++) { const r = rollDice(seed); if (r.dice[0] === raw.dice[0] && r.dice[1] === raw.dice[1]) { st.seed = seed; break; } }
-        }
-        if (typeof raw?.cash === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.cash = raw.cash; }
-        if (typeof raw?.give === 'number') { st.properties[raw.give] = { owner: raw.playerId ?? sess.playerId, houses: 0, mortgaged: false }; }
-        room.state = st;
-        broadcast(room);
-        cb?.(ok({}));
-      } catch (e) { handleError(e, cb); }
-    });
-  }
 
   socket.on('disconnect', () => {
     const sess = sessions.get(socket.id);

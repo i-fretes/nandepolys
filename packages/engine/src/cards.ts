@@ -38,14 +38,8 @@ export const COMMUNITY_CARDS: Card[] = [
   { id: 'C16', deck: 'community', text: 'Herencia de un tío en Encarnación. Cobrá ₲ 100.000.', effect: { kind: 'money', amount: 100 } },
 ];
 
-// Cartas extra que entran al mazo solo si la sala tiene activados los desafíos
-export const CHALLENGE_CARDS: Card[] = [
-  { id: 'S17', deck: 'chance', text: '¡Desafío! Se armó la timba en la esquina: elegí a un rival y un mini-juego. Se juega por ₲ 100.000 y no puede negarse.', effect: { kind: 'challenge', amount: 100 } },
-  { id: 'C17', deck: 'community', text: '¡Desafío! La cooperativa organiza un torneo relámpago: elegí a un rival y un mini-juego por ₲ 100.000. No puede negarse.', effect: { kind: 'challenge', amount: 100 } },
-];
-
 export const ALL_CARDS: Record<string, Card> = Object.fromEntries(
-  [...CHANCE_CARDS, ...COMMUNITY_CARDS, ...CHALLENGE_CARDS].map(c => [c.id, c]),
+  [...CHANCE_CARDS, ...COMMUNITY_CARDS].map(c => [c.id, c]),
 );
 
 export function card(id: string): Card {

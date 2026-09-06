@@ -6,7 +6,7 @@ export default function Modal({ open, onClose, children, width = 'max-w-lg' }: {
       {open && (
         <motion.div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, pointerEvents: 'none' }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           onClick={onClose}
         >
           <motion.div

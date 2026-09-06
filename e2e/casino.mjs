@@ -40,7 +40,7 @@ for (const [p, name, tok] of [[b, 'Lucía', 'Chipa'], [c, 'Mateo', 'Carreta']]) 
 }
 await a.waitForSelector('text=Jugadores (3/6)');
 // Activar timba
-for (const label of ['Casino en la casilla 38', 'Jackpot', 'Alquiler a doble o nada', 'Desafíos entre jugadores']) {
+for (const label of ['Casinos', 'Jackpot', 'Alquiler a doble o nada', 'Desafíos entre jugadores']) {
   const cb = a.locator('label', { hasText: label }).locator('input[type=checkbox]');
   await cb.click();
   await a.waitForFunction(el => el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
@@ -56,8 +56,8 @@ const pages = { Ivan: a, 'Lucía': b, Mateo: c };
 const cur = pages[firstName.replace('Turno de ', '')];
 log('empieza', firstName);
 
-// 1) Casino: fijar posición 35 y dados 1+2 → 38
-await dbg(cur, { position: 35, dice: [1, 2] });
+// 1) Casino: fijar posición 36 y dados 1+2 → 39
+await dbg(cur, { position: 36, dice: [1, 2] });
 await click(cur, 'Tirar dados');
 await cur.waitForSelector('text=Casino', { timeout: 8000 });
 await cur.waitForTimeout(700);
@@ -80,7 +80,7 @@ const waitTurnChange = async (prev) => { await a.waitForFunction(p => document.q
 await waitTurnChange(firstName);
 const second = await turnOf();
 const cur2 = pages[second.replace('Turno de ', '')];
-await dbg(cur2, { position: 35, dice: [1, 2] });
+await dbg(cur2, { position: 36, dice: [1, 2] });
 await click(cur2, 'Tirar dados');
 await cur2.waitForSelector('text=Casino', { timeout: 8000 });
 await cur2.click('button:has-text("Carrera de carretas")');
@@ -97,7 +97,7 @@ await click(cur2, 'Terminar turno');
 await waitTurnChange(second);
 const third = await turnOf();
 const cur3 = pages[third.replace('Turno de ', '')];
-await dbg(cur3, { position: 35, dice: [1, 2] });
+await dbg(cur3, { position: 36, dice: [1, 2] });
 await click(cur3, 'Tirar dados');
 await cur3.waitForSelector('text=Casino', { timeout: 8000 });
 await cur3.click('button:has-text("Doble o nada")');
@@ -115,7 +115,7 @@ await waitTurnChange(third);
 const p1 = cur, p2 = cur2;
 const id1 = await p1.evaluate(() => JSON.parse(localStorage.getItem('nandepoly:session:' + location.pathname.split('/').pop()) || '{}') && null);
 // Damos Palacio de López al jugador 1 (dueño) y hacemos caer al que tiene el turno ahora (p1) → necesitamos que caiga p2: avanzamos el turno.
-await dbg(p1, { give: 39 });
+await dbg(p1, { give: 43 });
 // turno actual es p1 (después de 3 jugadores volvió al primero). p1 tira y termina.
 await dbg(p1, { position: 0, dice: [1, 3] }); // 4: impuesto → elegir
 await click(p1, 'Tirar dados');
@@ -123,8 +123,8 @@ await p1.waitForTimeout(800);
 await clickIf(p1, 'Pagar ₲ 200.000');
 await click(p1, 'Terminar turno');
 await waitTurnChange(firstName);
-// ahora p2: posición 36, dados 1+2 → 39 (Palacio, del jugador 1)
-await dbg(p2, { position: 36, dice: [1, 2] });
+// ahora p2: posición 40, dados 1+2 → 43 (Palacio, del jugador 1)
+await dbg(p2, { position: 40, dice: [1, 2] });
 await click(p2, 'Tirar dados');
 await p2.waitForSelector('text=Alquiler en Palacio', { timeout: 8000 });
 await p2.screenshot({ path: `${OUT}/alquiler-oferta.png` });

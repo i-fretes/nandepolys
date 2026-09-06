@@ -39,68 +39,6 @@ export function botAction(s: GameState): Action | null {
       : { type: 'TRADE_REJECT', playerId: to.id, tradeId: tr.id };
   }
 
-  // Casino
-  if (s.turnPhase === 'CASINO' && s.casino) {
-    const c = s.casino;
-    const bp = s.players.find(x => x.id === c.playerId)!;
-    if (!bp.isBot) return null;
-    if (c.double) return c.double.step >= 2 ? { type: 'CASINO_CASHOUT', playerId: bp.id } : { type: 'CASINO_DOUBLE_CONTINUE', playerId: bp.id };
-    if (c.played) return { type: 'CASINO_LEAVE', playerId: bp.id };
-    const amount = Math.min(s.settings.casinoMaxBet, Math.max(10, Math.floor(bp.cash * 0.05 / 10) * 10));
-    if (bp.cash < 200) return { type: 'CASINO_LEAVE', playerId: bp.id };
-    const pickGame = (bp.cash + s.turnNumber) % 4;
-    if (pickGame === 0) return { type: 'CASINO_PLAY', playerId: bp.id, game: 'ruleta', amount };
-    if (pickGame === 1) return { type: 'CASINO_PLAY', playerId: bp.id, game: 'quiniela', amount, pick: 7 };
-    if (pickGame === 2) return { type: 'CASINO_PLAY', playerId: bp.id, game: 'carrera', amount, pick: s.turnNumber % 6 };
-    return { type: 'CASINO_DOUBLE_START', playerId: bp.id, amount };
-  }
-
-  // Alquiler a doble o nada
-  if (s.turnPhase === 'RENT_OFFER' && s.rentOffer) {
-    const o = s.rentOffer;
-    const payer = s.players.find(x => x.id === o.payerId)!;
-    const owner = s.players.find(x => x.id === o.ownerId)!;
-    if (!o.proposed && payer.isBot) {
-      // Propone si el alquiler es grande respecto a su efectivo y puede cubrir el doble
-      return o.rent > payer.cash * 0.15 && payer.cash >= o.rent * 2 ? { type: 'RENT_DON_PROPOSE', playerId: payer.id } : { type: 'RENT_PAY', playerId: payer.id };
-    }
-    if (o.proposed && owner.isBot) {
-      return o.rent < owner.cash * 0.2 ? { type: 'RENT_DON_ACCEPT', playerId: owner.id } : { type: 'RENT_DON_REJECT', playerId: owner.id };
-    }
-    return null;
-  }
-
-  // Desafíos
-  if (s.turnPhase === 'CHALLENGE' && s.challenge) {
-    const c = s.challenge;
-    const from = s.players.find(x => x.id === c.fromId)!;
-    const to = c.toId ? s.players.find(x => x.id === c.toId) : null;
-    if (c.status === 'pick' && from.isBot) {
-      const rivals = s.players.filter(x => !x.bankrupt && x.id !== from.id && x.cash > 0);
-      if (!rivals.length) return { type: 'CHALLENGE_CANCEL', playerId: s.hostId };
-      const rival = rivals[s.turnNumber % rivals.length];
-      const kinds = ['dados', 'ppt', 'trivia', 'terere'] as const;
-      return { type: 'CHALLENGE_PROPOSE', playerId: from.id, toId: rival.id, kind: kinds[s.turnNumber % 4], amount: c.amount };
-    }
-    if (c.status === 'pending' && to?.isBot) {
-      return c.amount <= to.cash * 0.25 ? { type: 'CHALLENGE_ACCEPT', playerId: to.id } : { type: 'CHALLENGE_REJECT', playerId: to.id };
-    }
-    if (c.status === 'playing') {
-      for (const b of [from, to]) {
-        if (!b?.isBot) continue;
-        if (c.kind === 'ppt' && !c.data.chosen?.includes(b.id)) {
-          const opts = ['piedra', 'papel', 'tijera'] as const;
-          return { type: 'CHALLENGE_MOVE', playerId: b.id, choice: opts[(b.cash + (c.data.rounds?.length ?? 0)) % 3] };
-        }
-        if (c.kind === 'trivia' && c.data.answered?.[b.id] === undefined) {
-          return { type: 'CHALLENGE_MOVE', playerId: b.id, answer: (b.cash + (c.data.qIndex ?? 0)) % 4 }; // el bot "adivina"
-        }
-        if (c.kind === 'terere' && c.data.go) return { type: 'CHALLENGE_MOVE', playerId: b.id };
-      }
-    }
-    return null;
-  }
-
   const p = currentPlayer(s);
   if (!p.isBot) return null;
   const legal = legalActions(s, p.id);

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BOARD, CASINO_TILE, GROUP_COLORS, isProperty, type Tile as TileT } from '@nandepoly/engine';
-import AnimatedNumber from './AnimatedNumber';
+import { BOARD, GROUP_COLORS, isProperty, type Tile as TileT } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { moneyShort, tokenEmoji } from '../format';
 import Dice from './Dice';
@@ -26,9 +25,7 @@ export default function Board() {
   const state = useStore(s => s.state)!;
   const setSelected = useStore(s => s.setSelectedTile);
   const displayPos = useStore(s => s.displayPos);
-  const highlight = useStore(s => s.highlightGroup);
   const current = state.players[state.currentPlayerIndex];
-  const glowGroup = highlight && highlight.until > Date.now() ? highlight.group : null;
 
   return (
     <div className="board w-full">
@@ -41,12 +38,12 @@ export default function Board() {
         return (
           <div
             key={t.id}
-            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''} ${t.type === 'street' && t.group === glowGroup ? 'glow-group' : ''}`}
+            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''}`}
             style={{ gridColumn: pos.col, gridRow: pos.row, ['--owner' as string]: owner?.color ?? 'transparent' }}
             onClick={() => setSelected(t.id)}
             title={t.name}
           >
-            <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} casino={t.id === CASINO_TILE && state.settings.casino} />
+            <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} />
             {here.length > 0 && (
               <div className="tokens">
                 {here.map(p => (
@@ -64,18 +61,7 @@ export default function Board() {
   );
 }
 
-function TileContent({ t, houses, corner, casino }: { t: TileT; houses: number; corner: boolean; casino?: boolean }) {
-  if (casino) {
-    return (
-      <>
-        <div className="band" style={{ background: 'linear-gradient(90deg,#7c3aed,#db2777)' }}><span style={{ fontSize: '1.8cqw' }}>🎰</span></div>
-        <div className="body">
-          <div className="name">Casino</div>
-          <div className="price">¡Apostá!</div>
-        </div>
-      </>
-    );
-  }
+function TileContent({ t, houses, corner }: { t: TileT; houses: number; corner: boolean }) {
   if (corner) {
     return (
       <div className="body">
@@ -155,11 +141,6 @@ function Center() {
       {state.settings.freeParkingPot && state.freeParkingPot > 0 && (
         <div className="mt-[1cqw] rounded-full bg-emerald-600 px-[2cqw] py-[0.5cqw] text-white" style={{ fontSize: '1.6cqw' }}>
           Pozo: {moneyShort(state.freeParkingPot)}
-        </div>
-      )}
-      {state.settings.jackpot && (
-        <div className="mt-[1cqw] rounded-full bg-gradient-to-r from-purple-700 to-pink-600 px-[2cqw] py-[0.5cqw] font-black text-yellow-300 shadow" style={{ fontSize: '1.7cqw', letterSpacing: '.05em' }} title="Doble seis se lo lleva">
-          🎰 JACKPOT <AnimatedNumber value={state.jackpot} format={n => '₲ ' + (n * 1000).toLocaleString('es-PY')} />
         </div>
       )}
       {last && (

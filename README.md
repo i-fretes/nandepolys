@@ -6,8 +6,6 @@ Juego de compra-venta de propiedades estilo clásico, **ambientado en Paraguay**
 - Reglas oficiales completas: subastas, alquileres dobles con grupo completo, construcción pareja, hipotecas al 110 %, cárcel (Tacumbú), intercambios, quiebra. Reglas caseras opcionales.
 - Servidor autoritativo (nadie puede hacer trampa), reconexión automática, chat, registro de jugadas, bots para rellenar.
 - Si alguien se va: el anfitrión puede reemplazarlo por un bot (recupera el control al volver) o sacarlo de la partida. Revancha con un botón. Ayuda de reglas dentro del juego, fichas que recorren el tablero y sonidos (con botón de silencio).
-- **Modo timba (opcional, se activa en el lobby):** Casino en la casilla 38 con Ruleta 49/51 (carrete estilo apertura de caja), Quiniela, Doble o nada y Carrera de carretas; Jackpot que se lleva el doble seis; alquiler a doble o nada; y **desafíos** entre jugadores (duelo de dados, piedra-papel-tijera, trivia paraguaya con 172 preguntas, tereré caliente) por botón o por las cartas ¡Desafío!.
-- Animaciones: billetes que vuelan entre jugadores, saldos que cuentan, +/− flotantes, temblor en pagos grandes, confeti al completar un grupo o ganar, dados y cartas en 3D, rejas al ir preso, racha 🔥 de alquileres.
 
 > Proyecto independiente y sin fines comerciales. "Monopoly" es una marca de Hasbro; Ñandepoly no usa su nombre, arte ni textos.
 
@@ -36,7 +34,7 @@ Tocá cualquier casilla del tablero para ver su título de propiedad completo (p
 
 ```bash
 pnpm install          # instala dependencias de los 3 paquetes
-pnpm test             # 74 tests del motor de reglas (incluye partidas completas simuladas)
+pnpm test             # 56 tests del motor de reglas (incluye partidas completas simuladas)
 pnpm build            # compila cliente (apps/web/dist) y servidor (apps/server/dist)
 pnpm start            # http://localhost:8080
 ```
@@ -109,10 +107,6 @@ Desventaja: si apagás la PC o se cae tu internet, la partida se corta hasta que
 | `ROOM_TTL_HOURS` | `6` | Horas sin nadie conectado tras las cuales se borra una sala. |
 | `AUCTION_SECONDS` | `20` | Segundos de inactividad para cerrar una subasta. |
 | `BOT_DELAY_MS` | `900` | Pausa entre acciones de los bots (para que se vean). |
-| `CHALLENGE_ACCEPT_SECONDS` | `15` | Tiempo para aceptar un desafío. |
-| `RENT_OFFER_SECONDS` | `20` | Tiempo para decidir en el alquiler a doble o nada. |
-| `CASINO_IDLE_SECONDS` | `75` | Inactividad máxima dentro del Casino. |
-| `DEBUG_TOOLS` | *(vacío)* | `1` habilita ganchos de prueba (fijar dados/posición) para las pruebas e2e. No usar en producción. |
 | `PUBLIC_DIR` | *(auto)* | Ruta al cliente compilado si no está en `apps/web/dist`. |
 | `LOG_LEVEL` | `info` | Nivel de log de Fastify/pino. |
 
@@ -150,9 +144,7 @@ Después de cambiar algo: `pnpm test && pnpm build` y volver a desplegar.
 
 ## Reglas caseras disponibles (las define el anfitrión en el lobby)
 
-Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial · **Casino** (con apuesta máxima configurable) · **Jackpot** · **Alquiler a doble o nada** · **Desafíos**.
-
-Todo lo de "timba" viene apagado por defecto: sin tocar nada, la partida es la clásica.
+Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial.
 
 ## Pruebas
 
@@ -162,8 +154,6 @@ pnpm build && pnpm start &     # levantar servidor
 pnpm e2e:bots                  # humano (script) + 5 bots juegan una partida entera por Socket.IO
 pnpm e2e                       # 6 navegadores reales juegan y uno se reconecta (requiere Chromium de Playwright)
 node e2e/features.mjs          # reemplazo por bot, sacar jugador, abandonar, fin de partida y revancha
-DEBUG_TOOLS=1 pnpm start &     # para la siguiente hace falta el servidor con ganchos de prueba
-node e2e/casino.mjs            # casino (ruleta, carrera, doble o nada), alquiler a doble o nada, trivia y piedra-papel-tijera
 ```
 
 ## Problemas frecuentes

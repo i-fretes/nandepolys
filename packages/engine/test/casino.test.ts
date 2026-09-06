@@ -6,20 +6,23 @@ const casinoGame = (n = 2, extra = {}) => makeGame(n, { casino: true, jackpot: t
 
 function landOnCasino(s: GameState) {
   const a = cur(s).id;
-  s = setPos(s, a, 35);
-  s = withDice(s, [1, 2]); // → 38
+  s = setPos(s, a, 36);
+  s = withDice(s, [1, 2]); // → 39 Casino
   return act(s, { type: 'ROLL', playerId: a }).state;
 }
 
 describe('casino', () => {
-  it('sin la opción, la 38 sigue siendo Impuesto al lujo', () => {
+  it('sin la opción, el Casino es una casilla de descanso (y el lujo sigue en la 42)', () => {
     let s = makeGame(2);
     s = landOnCasino(s);
-    expect(s.players[0].cash).toBe(1400);
+    expect(s.players[0].cash).toBe(1500);
     expect(s.turnPhase).toBe('END_TURN');
+    let t = makeGame(2);
+    t = act(setPos(withDice(t, [1, 2]), cur(t).id, 39), { type: 'ROLL', playerId: cur(t).id }).state;
+    expect(t.players[0].cash).toBe(1400);
   });
 
-  it('con la opción, caer en la 38 abre el Casino y se puede salir sin apostar', () => {
+  it('con la opción, caer en la 39 abre el Casino y se puede salir sin apostar', () => {
     let s = casinoGame();
     s = landOnCasino(s);
     expect(s.turnPhase).toBe('CASINO');
@@ -121,9 +124,9 @@ describe('alquiler a doble o nada', () => {
   function landOnRival() {
     let s = makeGame(2, { rentDoubleOrNothing: true });
     const [a, b] = s.players.map(p => p.id);
-    s = give(s, b, [6, 8, 9]); // celeste completo: alquiler 12 en Caacupé
+    s = give(s, b, [7, 9, 10]); // celeste completo: alquiler 12 en Caacupé
     s = setPos(s, a, 0);
-    s = withDice(s, [2, 4]); // → 6
+    s = withDice(s, [3, 4]); // → 7
     return { s: act(s, { type: 'ROLL', playerId: a }).state, a, b };
   }
 
@@ -256,8 +259,8 @@ describe('desafíos', () => {
     let s = chGame(2);
     const [a, b] = s.players.map(p => p.id);
     s.decks.chance = ['S17', ...s.decks.chance.filter(x => x !== 'S17')];
-    s = setPos(s, a, 4);
-    s = withDice(s, [1, 2]); // → 7 Suerte
+    s = setPos(s, a, 5);
+    s = withDice(s, [1, 2]); // → 8 Suerte
     let r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.turnPhase).toBe('CHALLENGE');
     expect(r.state.challenge?.status).toBe('pick');
@@ -272,7 +275,7 @@ describe('desafíos', () => {
   it('FORCE_END_TURN resuelve casino, oferta de alquiler y desafíos pendientes', () => {
     let s = makeGame(2, { casino: true, rentDoubleOrNothing: true, challenges: true });
     const [a, b] = s.players.map(p => p.id);
-    let r = act(setPos(withDice(s, [1, 2]), a, 35), { type: 'ROLL', playerId: a });
+    let r = act(setPos(withDice(s, [1, 2]), a, 36), { type: 'ROLL', playerId: a });
     expect(r.state.turnPhase).toBe('CASINO');
     r = act(r.state, { type: 'FORCE_END_TURN', playerId: s.hostId });
     expect(cur(r.state).id).toBe(b);
