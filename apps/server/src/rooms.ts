@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { customAlphabet, nanoid } from 'nanoid';
-import { createGame, type GameState } from '@nandepoly/engine';
+import { DEFAULT_SETTINGS, createGame, type GameState } from '@nandepoly/engine';
 
 export interface ChatMessage { id: string; playerId: string | null; name: string; text: string; at: number }
 
@@ -14,6 +14,7 @@ export interface Room {
   lastActivity: number;
   auctionDeadline: number | null;        // epoch ms (para el cliente)
   turnDeadline: number | null;
+  phaseDeadline: number | null;          // desafío pendiente / oferta de alquiler / casino
 }
 
 const codeGen = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ', 5);
@@ -32,7 +33,10 @@ export class RoomManager {
           const raw = JSON.parse(readFileSync(this.dataFile, 'utf8')) as Room[];
           for (const r of raw) {
             for (const p of r.state.players) p.connected = false;
-            r.auctionDeadline = null; r.turnDeadline = null;
+            r.auctionDeadline = null; r.turnDeadline = null; r.phaseDeadline = null;
+            // Compatibilidad con partidas guardadas por versiones anteriores
+            r.state.settings = { ...DEFAULT_SETTINGS, ...r.state.settings };
+            r.state.jackpot ??= 0; r.state.casino ??= null; r.state.rentOffer ??= null; r.state.challenge ??= null;
             this.rooms.set(r.code, r);
           }
           console.log(`Salas restauradas: ${this.rooms.size}`);
@@ -57,6 +61,7 @@ export class RoomManager {
       lastActivity: Date.now(),
       auctionDeadline: null,
       turnDeadline: null,
+      phaseDeadline: null,
     };
     this.rooms.set(code, room);
     return room;

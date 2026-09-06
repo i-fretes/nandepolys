@@ -50,6 +50,18 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
     body: <p>Si tenés que pagar y no te alcanza el efectivo, el juego te frena: hipotecá, vendé edificios o negociá hasta juntar la plata y tocá <b>Pagar</b>. Si ni vendiendo todo alcanza, quebrás: tus bienes pasan a quien le debías (o vuelven al banco y se subastan si era el banco). Quedás como espectador.</p>,
   },
   {
+    title: 'Casino', icon: '🎰',
+    body: <p>Con la opción activada, la casilla 38 es el <b>Casino</b>. Al caer podés apostar una vez (o irte sin apostar): <b>Ruleta</b> (49 % ganás lo apostado), <b>Quiniela</b> (elegís la suma de los dados: el 7 paga 5 veces, el 2 y el 12 pagan 30), <b>Doble o nada</b> (par dobla, impar perdés todo; retirate cuando quieras, hasta 4 pasos), <b>Carrera de carretas</b> (seis carretas, paga 5 a 1). Con el <b>Jackpot</b> activo, todo lo que se pierde se acumula y se lo lleva quien saque doble seis en su tirada normal.</p>,
+  },
+  {
+    title: 'Doble o nada en alquileres', icon: '🎲',
+    body: <p>Con la opción activada, al caer en propiedad ajena podés <b>pagar</b> o <b>proponer doble o nada</b>. El dueño decide si acepta: si acepta, tirás los dados; con <b>7 o más no pagás nada</b>, con <b>6 o menos pagás el doble</b>. Si rechaza, pagás lo normal. Solo podés proponerlo si podrías cubrir el doble.</p>,
+  },
+  {
+    title: 'Desafíos', icon: '⚔️',
+    body: <p>Con la opción activada, en tu turno podés <b>Desafiar</b> a otro jugador por una apuesta; puede rechazar. Además entran dos cartas <b>¡Desafío!</b> al mazo: si la sacás, elegís rival y mini-juego por ₲ 100.000 y <b>no puede negarse</b>. Mini-juegos: <b>Duelo de dados</b> (mayor gana), <b>Piedra, papel o tijera</b> (mejor de tres, elecciones secretas), <b>Trivia paraguaya</b> (primero que acierta gana; si fallan los dos, otra pregunta, hasta tres) y <b>Tereré caliente</b> (cuando aparece el tereré, tocá primero; si te adelantás, perdés).</p>,
+  },
+  {
     title: 'Si alguien se va', icon: '🚪',
     body: <p>Si un jugador se desconecta, puede volver con el mismo link y sigue con su jugador. Si no vuelve, el anfitrión puede <b>reemplazarlo por un bot</b> (recupera el control cuando regrese) o <b>sacarlo</b> de la partida (sus propiedades se subastan). También podés activar un tiempo por turno en el lobby para que la partida nunca quede trabada.</p>,
   },
@@ -68,6 +80,10 @@ export default function RulesDialog() {
     settings.turnTimerSeconds > 0 && `Tiempo por turno: ${settings.turnTimerSeconds} s`,
     settings.timeLimitMinutes > 0 && `Duración máxima: ${settings.timeLimitMinutes} min`,
     settings.startingCash !== 1500 && `Efectivo inicial: ₲ ${(settings.startingCash * 1000).toLocaleString('es-PY')}`,
+    settings.casino && `Casino en la casilla 38 (apuesta máxima ₲ ${(settings.casinoMaxBet * 1000).toLocaleString('es-PY')})`,
+    settings.jackpot && 'Jackpot del Casino (doble seis)',
+    settings.rentDoubleOrNothing && 'Alquiler a doble o nada',
+    settings.challenges && 'Desafíos entre jugadores y cartas ¡Desafío!',
   ].filter(Boolean) as string[] : [];
 
   return (

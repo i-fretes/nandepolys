@@ -29,6 +29,38 @@ function randomAction(s: GameState, rnd: () => number): Action | null {
   const p = currentPlayer(s);
   const legal = legalActions(s, p.id);
   switch (s.turnPhase) {
+    case 'CASINO': {
+      const c = s.casino!;
+      if (c.double) return rnd() < 0.5 ? { type: 'CASINO_DOUBLE_CONTINUE', playerId: c.playerId } : { type: 'CASINO_CASHOUT', playerId: c.playerId };
+      if (c.played) return { type: 'CASINO_LEAVE', playerId: c.playerId };
+      const cash = s.players.find(x => x.id === c.playerId)!.cash;
+      const amount = Math.min(s.settings.casinoMaxBet, Math.max(10, Math.floor(cash / 10)));
+      if (cash < 10 || rnd() < 0.2) return { type: 'CASINO_LEAVE', playerId: c.playerId };
+      const k = rnd();
+      if (k < 0.25) return { type: 'CASINO_PLAY', playerId: c.playerId, game: 'ruleta', amount };
+      if (k < 0.5) return { type: 'CASINO_PLAY', playerId: c.playerId, game: 'quiniela', amount, pick: 2 + Math.floor(rnd() * 11) };
+      if (k < 0.75) return { type: 'CASINO_PLAY', playerId: c.playerId, game: 'carrera', amount, pick: Math.floor(rnd() * 6) };
+      return { type: 'CASINO_DOUBLE_START', playerId: c.playerId, amount };
+    }
+    case 'RENT_OFFER': {
+      const o = s.rentOffer!;
+      if (!o.proposed) return rnd() < 0.5 ? { type: 'RENT_PAY', playerId: o.payerId } : { type: 'RENT_DON_PROPOSE', playerId: o.payerId };
+      return rnd() < 0.5 ? { type: 'RENT_DON_ACCEPT', playerId: o.ownerId } : { type: 'RENT_DON_REJECT', playerId: o.ownerId };
+    }
+    case 'CHALLENGE': {
+      const c = s.challenge!;
+      const kinds = ['dados', 'ppt', 'trivia', 'terere'] as const;
+      if (c.status === 'pick') {
+        const rivals = s.players.filter(x => !x.bankrupt && x.id !== c.fromId);
+        return { type: 'CHALLENGE_PROPOSE', playerId: c.fromId, toId: rivals[Math.floor(rnd() * rivals.length)].id, kind: kinds[Math.floor(rnd() * 4)], amount: 100 };
+      }
+      if (c.status === 'pending') return rnd() < 0.7 ? { type: 'CHALLENGE_ACCEPT', playerId: c.toId! } : { type: 'CHALLENGE_REJECT', playerId: c.toId! };
+      const who = rnd() < 0.5 ? c.fromId : c.toId!;
+      if (c.kind === 'ppt') return { type: 'CHALLENGE_MOVE', playerId: who, choice: (['piedra', 'papel', 'tijera'] as const)[Math.floor(rnd() * 3)] };
+      if (c.kind === 'trivia') return { type: 'CHALLENGE_MOVE', playerId: who, answer: Math.floor(rnd() * 4) };
+      if (c.kind === 'terere') return !c.data.go && rnd() < 0.8 ? { type: 'CHALLENGE_GO', playerId: 'server' } : { type: 'CHALLENGE_MOVE', playerId: who };
+      return { type: 'CHALLENGE_CANCEL', playerId: s.hostId };
+    }
     case 'AWAITING_ROLL':
       if (legal.has('BUILD') && rnd() < 0.6) {
         const t = propertiesOf(s, p.id).find(t => !canBuild(s, p.id, t.id));
@@ -37,6 +69,10 @@ function randomAction(s: GameState, rnd: () => number): Action | null {
       if (legal.has('UNMORTGAGE') && rnd() < 0.3) {
         const t = propertiesOf(s, p.id).find(t => s.properties[t.id].mortgaged);
         if (t) return { type: 'UNMORTGAGE', playerId: p.id, tileId: t.id };
+      }
+      if (legal.has('CHALLENGE_PROPOSE') && rnd() < 0.08) {
+        const rivals = s.players.filter(x => !x.bankrupt && x.id !== p.id && x.cash >= 50);
+        if (rivals.length && p.cash >= 50) return { type: 'CHALLENGE_PROPOSE', playerId: p.id, toId: rivals[0].id, kind: (['dados', 'ppt', 'trivia', 'terere'] as const)[Math.floor(rnd() * 4)], amount: 50 };
       }
       if (legal.has('JAIL_CARD')) return { type: 'JAIL_CARD', playerId: p.id };
       if (legal.has('JAIL_PAY') && rnd() < 0.5) return { type: 'JAIL_PAY', playerId: p.id };
@@ -86,12 +122,13 @@ function checkInvariants(s: GameState) {
   const jailCardsHeld = s.players.reduce((n, p) => n + p.jailCards.length, 0);
   const jailCardsInDecks = (s.decks.chance.includes('S8') ? 1 : 0) + (s.decks.community.includes('C5') ? 1 : 0);
   expect(jailCardsHeld + jailCardsInDecks).toBe(2);
-  expect(s.decks.chance.length + (s.decks.chance.includes('S8') ? 0 : 1)).toBe(16);
-  expect(s.decks.community.length + (s.decks.community.includes('C5') ? 0 : 1)).toBe(16);
+  const extra = s.settings.challenges ? 1 : 0;
+  expect(s.decks.chance.length + (s.decks.chance.includes('S8') ? 0 : 1)).toBe(16 + extra);
+  expect(s.decks.community.length + (s.decks.community.includes('C5') ? 0 : 1)).toBe(16 + extra);
 }
 
-function simulate(players: number, seed: number, maxSteps = 20000) {
-  let s = makeGame(players, {}, seed);
+function simulate(players: number, seed: number, maxSteps = 20000, settings: Record<string, unknown> = {}) {
+  let s = makeGame(players, settings, seed);
   let rs = seed * 7 + 1;
   const rnd = () => { const r = nextRandom(rs); rs = r.seed; return r.value; };
   let steps = 0;
@@ -107,6 +144,10 @@ function simulate(players: number, seed: number, maxSteps = 20000) {
       if (errors > 5000) throw e;
       if (a.type === 'BID') s = applyAction(s, { type: 'AUCTION_PASS', playerId: a.playerId }).state;
       else if (a.type === 'TRADE_PROPOSE') s = applyAction(s, { type: 'END_TURN', playerId: a.playerId }).state;
+      else if (a.type === 'CHALLENGE_PROPOSE' && s.turnPhase !== 'CHALLENGE') { /* rival sin plata: seguimos */ }
+      else if (a.type.startsWith('CASINO')) s = applyAction(s, { type: 'CASINO_LEAVE', playerId: (a as { playerId: string }).playerId }).state;
+      else if (a.type === 'RENT_DON_PROPOSE') s = applyAction(s, { type: 'RENT_PAY', playerId: a.playerId }).state;
+      else if (a.type === 'CHALLENGE_MOVE') { /* ya eligió en esta ronda */ }
       else throw e;
     }
     if (steps % 50 === 0) checkInvariants(s);
@@ -129,6 +170,24 @@ describe('partidas completas simuladas', () => {
       const { s } = simulate(6, seed, 30000);
       expect(['PLAYING', 'FINISHED']).toContain(s.phase);
       if (s.phase === 'FINISHED') expect(s.players.filter(p => !p.bankrupt).length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('6 jugadores con casino, jackpot, doble o nada y desafíos: sin errores de estado', () => {
+    for (const seed of [4, 8, 15]) {
+      const { s } = simulate(6, seed, 20000, { casino: true, jackpot: true, rentDoubleOrNothing: true, challenges: true, freeParkingPot: true });
+      expect(['PLAYING', 'FINISHED']).toContain(s.phase);
+      if (s.phase === 'FINISHED') expect(s.players.filter(p => !p.bankrupt).length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('FORCE_END_TURN con todas las opciones siempre avanza el turno', () => {
+    let s = makeGame(4, { casino: true, jackpot: true, rentDoubleOrNothing: true, challenges: true }, 77);
+    for (let i = 0; i < 300 && s.phase === 'PLAYING'; i++) {
+      const before = s.turnNumber;
+      s = applyAction(s, { type: 'FORCE_END_TURN', playerId: s.hostId }).state;
+      if (s.phase === 'PLAYING') expect(s.turnNumber).toBeGreaterThan(before);
+      checkInvariants(s);
     }
   });
 

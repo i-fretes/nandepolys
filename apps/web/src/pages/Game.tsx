@@ -13,6 +13,10 @@ import TradeDialog from '../components/TradeDialog';
 import CardModal from '../components/CardModal';
 import GameOver from '../components/GameOver';
 import RulesDialog from '../components/RulesDialog';
+import FX from '../components/FX';
+import CasinoDialog from '../components/CasinoDialog';
+import RentOfferDialog from '../components/RentOfferDialog';
+import ChallengeDialog from '../components/ChallengeDialog';
 import { isMuted, setMuted } from '../sound';
 import { useState } from 'react';
 
@@ -29,6 +33,7 @@ export default function Game() {
   const [muted, setMutedState] = useState(isMuted());
   const me = state.players.find(p => p.id === playerId);
   const canAbandon = !!me && !me.bankrupt && state.phase === 'PLAYING';
+  const myTurn = state.phase === 'PLAYING' && state.players[state.currentPlayerIndex]?.id === playerId && (state.turnPhase === 'AWAITING_ROLL' || state.turnPhase === 'END_TURN');
 
   async function endGame() {
     if (!confirm('¿Terminar la partida ahora? Gana quien tenga mayor patrimonio.')) return;
@@ -84,6 +89,11 @@ export default function Game() {
       <CardModal />
       <GameOver />
       <RulesDialog />
+      <CasinoDialog />
+      <RentOfferDialog />
+      <ChallengeDialog />
+      <FX />
+      {myTurn && <div className="my-turn-glow" style={{ ['--glow' as string]: me?.color }} />}
     </div>
   );
 }

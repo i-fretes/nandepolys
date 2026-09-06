@@ -20,6 +20,7 @@ export default function ActionBar() {
     <>
       <button className="btn-ghost btn-sm" onClick={() => setDialog('manage')} disabled={!(legal.has('BUILD') || legal.has('SELL_BUILDING') || legal.has('MORTGAGE') || legal.has('UNMORTGAGE'))}>🏠 Propiedades</button>
       <button className="btn-ghost btn-sm" onClick={() => setDialog('trade')} disabled={!legal.has('TRADE_PROPOSE')}>🤝 Intercambiar</button>
+      {state.settings.challenges && <button className="btn-ghost btn-sm" onClick={() => setDialog('challenge')} disabled={!legal.has('CHALLENGE_PROPOSE')}>⚔️ Desafiar</button>}
     </>
   );
 
@@ -28,6 +29,9 @@ export default function ActionBar() {
   if (state.turnPhase === 'AUCTION') {
     return <Bar><span className="text-sm font-semibold">🔨 Subasta en curso</span></Bar>;
   }
+  if (state.turnPhase === 'CASINO') return <Bar><span className="text-sm font-semibold">🎰 {current?.name} está en el Casino</span></Bar>;
+  if (state.turnPhase === 'CHALLENGE') return <Bar><span className="text-sm font-semibold">⚔️ Desafío en curso</span></Bar>;
+  if (state.turnPhase === 'RENT_OFFER') return <Bar><span className="text-sm font-semibold">💵 Cobro de alquiler en curso</span></Bar>;
 
   if (!myTurn) {
     return (
@@ -52,7 +56,7 @@ export default function ActionBar() {
           ) : (
             <>
               {mgmt}
-              <button className="btn-primary ml-auto px-6 text-lg" onClick={() => act({ type: 'ROLL' })}>🎲 Tirar dados</button>
+              <button className="btn-primary breathe ml-auto px-6 text-lg" onClick={() => act({ type: 'ROLL' })}>🎲 Tirar dados</button>
             </>
           )}
         </Bar>

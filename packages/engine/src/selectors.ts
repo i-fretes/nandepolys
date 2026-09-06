@@ -161,5 +161,6 @@ export type ClientState = Omit<GameState, 'decks' | 'seed'> & { deckCounts: Reco
 
 export function toClientState(s: GameState): ClientState {
   const { decks, seed: _seed, ...rest } = s;
-  return { ...rest, deckCounts: { chance: decks.chance.length, community: decks.community.length } };
+  const challenge = rest.challenge ? { ...rest.challenge, secret: {} } : null;
+  return { ...rest, challenge, deckCounts: { chance: decks.chance.length, community: decks.community.length } };
 }

@@ -27,7 +27,8 @@ export type CardEffect =
   | { kind: 'goToJail' }
   | { kind: 'repairs'; perHouse: number; perHotel: number }
   | { kind: 'payEach'; amount: number }
-  | { kind: 'collectEach'; amount: number };
+  | { kind: 'collectEach'; amount: number }
+  | { kind: 'challenge'; amount: number };   // ¡Desafío!: elegís rival y mini-juego; el rival no puede negarse
 
 export interface Card { id: string; deck: DeckId; text: string; effect: CardEffect }
 
@@ -41,6 +42,11 @@ export interface GameSettings {
   noBuyFirstLap: boolean;      // regla casera: sin compras en la primera vuelta
   turnTimerSeconds: number;    // 0 = sin límite (lo aplica el servidor)
   timeLimitMinutes: number;    // 0 = sin límite (lo aplica el servidor)
+  casino: boolean;             // la casilla 38 es el Casino en vez del Impuesto al lujo
+  casinoMaxBet: number;        // apuesta máxima (miles), 500 por defecto
+  jackpot: boolean;            // lo perdido en el casino se acumula; doble seis se lo lleva
+  rentDoubleOrNothing: boolean;// al caer en propiedad ajena podés proponer doble o nada
+  challenges: boolean;         // desafíos entre jugadores (botón + cartas ¡Desafío!)
 }
 
 export interface Player {
@@ -62,7 +68,54 @@ export interface Player {
 export interface PropertyState { owner: string | null; houses: number; mortgaged: boolean } // houses 5 = hotel
 
 export type TurnPhase =
-  | 'AWAITING_ROLL' | 'AWAITING_BUY' | 'AUCTION' | 'TAX_CHOICE' | 'DEBT' | 'END_TURN';
+  | 'AWAITING_ROLL' | 'AWAITING_BUY' | 'AUCTION' | 'TAX_CHOICE' | 'DEBT' | 'END_TURN'
+  | 'CASINO' | 'RENT_OFFER' | 'CHALLENGE';
+
+export type CasinoGame = 'ruleta' | 'quiniela' | 'doble' | 'carrera';
+export interface CasinoState {
+  playerId: string;
+  played: boolean;             // ya jugó una vez (una apuesta por visita, salvo doble o nada en curso)
+  double: { stake: number; step: number } | null;  // doble o nada en curso
+}
+
+export interface RentOfferState {
+  payerId: string;
+  ownerId: string;
+  tileId: number;
+  rent: number;
+  proposed: boolean;           // el que paga propuso doble o nada; espera al dueño
+}
+
+export type ChallengeKind = 'dados' | 'ppt' | 'trivia' | 'terere';
+export type PptChoice = 'piedra' | 'papel' | 'tijera';
+export interface TriviaQuestion { q: string; options: [string, string, string, string]; answer: number }
+export interface ChallengeState {
+  id: string;
+  kind: ChallengeKind | null;  // null mientras el jugador elige (carta ¡Desafío!)
+  fromId: string;
+  toId: string | null;
+  amount: number;
+  status: 'pick' | 'pending' | 'playing' | 'done';
+  forced: boolean;             // por carta: el rival no puede rechazar
+  returnPhase: TurnPhase;
+  data: {
+    rolls?: Record<string, [number, number]>;
+    rounds?: { a: PptChoice; b: PptChoice; winner: string | null }[];
+    score?: Record<string, number>;
+    chosen?: string[];                       // ppt: quiénes ya eligieron esta ronda (sin revelar qué)
+    question?: { q: string; options: string[] };
+    qIndex?: number;
+    answered?: Record<string, number>;       // trivia: respuestas ya dadas en la pregunta actual
+    go?: boolean;                            // terere: ya apareció la señal
+    winnerId?: string | null;
+    reason?: string;
+  };
+  secret: {                                   // nunca se envía a los clientes
+    choices?: Record<string, PptChoice>;
+    answer?: number;
+    used?: number[];
+  };
+}
 
 export interface AuctionState {
   tileId: number;
@@ -114,6 +167,10 @@ export interface GameState {
   pendingTrade: TradeState | null;
   debt: DebtState | null;
   freeParkingPot: number;
+  jackpot: number;
+  casino: CasinoState | null;
+  rentOffer: RentOfferState | null;
+  challenge: ChallengeState | null;
   log: GameEvent[];
   seed: number;
   winnerId: string | null;
@@ -145,7 +202,25 @@ export type Action =
   | { type: 'FORCE_END_TURN'; playerId: string }   // servidor: temporizador vencido
   | { type: 'END_GAME'; playerId: string }          // anfitrión / límite de tiempo
   | { type: 'LEAVE_GAME'; playerId: string; targetId: string }            // abandonar (uno mismo) o expulsar (anfitrión)
-  | { type: 'SET_BOT'; playerId: string; targetId: string; isBot: boolean }; // anfitrión: reemplazar por bot / devolver
+  | { type: 'SET_BOT'; playerId: string; targetId: string; isBot: boolean } // anfitrión: reemplazar por bot / devolver
+  // Casino
+  | { type: 'CASINO_PLAY'; playerId: string; game: 'ruleta' | 'quiniela' | 'carrera'; amount: number; pick?: number }
+  | { type: 'CASINO_DOUBLE_START'; playerId: string; amount: number }
+  | { type: 'CASINO_DOUBLE_CONTINUE'; playerId: string }
+  | { type: 'CASINO_CASHOUT'; playerId: string }
+  | { type: 'CASINO_LEAVE'; playerId: string }
+  // Alquiler a doble o nada
+  | { type: 'RENT_PAY'; playerId: string }
+  | { type: 'RENT_DON_PROPOSE'; playerId: string }
+  | { type: 'RENT_DON_ACCEPT'; playerId: string }
+  | { type: 'RENT_DON_REJECT'; playerId: string }
+  // Desafíos
+  | { type: 'CHALLENGE_PROPOSE'; playerId: string; toId: string; kind: ChallengeKind; amount: number }
+  | { type: 'CHALLENGE_ACCEPT'; playerId: string }
+  | { type: 'CHALLENGE_REJECT'; playerId: string }
+  | { type: 'CHALLENGE_MOVE'; playerId: string; choice?: PptChoice; answer?: number }
+  | { type: 'CHALLENGE_GO'; playerId: string }        // solo servidor: señal del tereré
+  | { type: 'CHALLENGE_CANCEL'; playerId: string };   // anfitrión/servidor: anula sin pagos
 
 export class RuleError extends Error {
   constructor(message: string) { super(message); this.name = 'RuleError'; }

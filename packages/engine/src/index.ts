@@ -4,3 +4,4 @@ export * from './cards';
 export * from './rng';
 export * from './selectors';
 export * from './reducer';
+export * from './trivia';

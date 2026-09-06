@@ -64,7 +64,7 @@ async function step(page) {
   const clickIf = async (text) => {
     const btn = page.locator(`button:has-text("${text}"):not([disabled])`).first();
     try {
-      if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500 }); return true; }
+      if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500, force: true }); return true; }
     } catch { /* el botón desapareció (ej. modal que se cerró solo) */ }
     return false;
   };

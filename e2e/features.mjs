@@ -18,7 +18,7 @@ async function page() {
 }
 const clickIf = async (p, text) => {
   const btn = p.locator(`button:has-text("${text}"):not([disabled])`).first();
-  try { if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500 }); return true; } } catch {}
+  try { if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500, force: true }); return true; } } catch {}
   return false;
 };
 

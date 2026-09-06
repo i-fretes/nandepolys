@@ -1,13 +1,14 @@
 import { BOARD, GO_SALARY, JAIL_FINE, JAIL_TILE, PROPERTY_IDS, TOTAL_HOTELS, TOTAL_HOUSES, groupTiles, isProperty, tile } from './board';
-import { CHANCE_CARDS, COMMUNITY_CARDS, card } from './cards';
-import { rollDice, shuffle } from './rng';
+import { CHALLENGE_CARDS, CHANCE_CARDS, COMMUNITY_CARDS, card } from './cards';
+import { TRIVIA } from './trivia';
+import { nextRandom, rollDice, shuffle } from './rng';
 import {
   activePlayers, canBuild, canMortgage, canSellBuilding, canUnmortgage, currentPlayer,
   liquidationValue, mortgageValue, netWorth, player, propertiesOf, ranking, rentFor, unmortgageCost,
 } from './selectors';
 import {
-  RuleError, type Action, type Card, type DeckId, type GameEvent, type GameSettings, type GameState,
-  type Player, type PropertyTile, type TokenId, type TradeSide, type TurnPhase,
+  RuleError, type Action, type Card, type ChallengeKind, type DeckId, type GameEvent, type GameSettings, type GameState,
+  type Player, type PptChoice, type PropertyTile, type TokenId, type TradeSide, type TurnPhase,
 } from './types';
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -18,7 +19,19 @@ export const DEFAULT_SETTINGS: GameSettings = {
   noBuyFirstLap: false,
   turnTimerSeconds: 0,
   timeLimitMinutes: 0,
+  casino: false,
+  casinoMaxBet: 500,
+  jackpot: false,
+  rentDoubleOrNothing: false,
+  challenges: false,
 };
+
+export const CASINO_TILE = 38;
+export const CHALLENGE_KINDS: ChallengeKind[] = ['dados', 'ppt', 'trivia', 'terere'];
+/** Pago de la quiniela según la suma elegida (veces la apuesta, además de recuperarla). */
+export const QUINIELA_PAYOUT: Record<number, number> = { 2: 30, 3: 15, 4: 10, 5: 8, 6: 6, 7: 5, 8: 6, 9: 8, 10: 10, 11: 15, 12: 30 };
+export const CARRETA_PAYOUT = 5;
+export const DOUBLE_MAX_STEPS = 4;
 
 export const MAX_PLAYERS = 6;
 export const MIN_PLAYERS = 2;
@@ -56,6 +69,10 @@ export function createGame(roomCode: string, hostId: string, seed: number, setti
     pendingTrade: null,
     debt: null,
     freeParkingPot: 0,
+    jackpot: 0,
+    casino: null,
+    rentOffer: null,
+    challenge: null,
     log: [],
     seed,
     winnerId: null,
@@ -186,8 +203,12 @@ function startGame(ctx: Ctx, playerId: string) {
   if (playerId !== s.hostId) throw new RuleError('Solo el anfitrión puede empezar.');
   if (s.players.length < MIN_PLAYERS) throw new RuleError('Se necesitan al menos 2 jugadores.');
 
-  const ch = shuffle(s.decks.chance, s.seed);
-  const co = shuffle(s.decks.community, ch.seed);
+  const base = { chance: CHANCE_CARDS.map(c => c.id), community: COMMUNITY_CARDS.map(c => c.id) };
+  if (s.settings.challenges) {
+    for (const c of CHALLENGE_CARDS) base[c.deck].push(c.id);
+  }
+  const ch = shuffle(base.chance, s.seed);
+  const co = shuffle(base.community, ch.seed);
   s.decks.chance = ch.items;
   s.decks.community = co.items;
   s.seed = co.seed;
@@ -243,7 +264,8 @@ function moveBySteps(ctx: Ctx, p: Player, steps: number) {
 function resolveLanding(ctx: Ctx, p: Player, opts: { rentMultiplier?: number; utilityForce10?: boolean } = {}) {
   const s = ctx.s;
   const t = tile(p.position);
-  emit(ctx, 'land', `${p.name} cayó en ${t.name}.`, p.id, { tileId: t.id });
+  const landName = t.id === CASINO_TILE && s.settings.casino ? 'el Casino' : t.name;
+  emit(ctx, 'land', `${p.name} cayó en ${landName}.`, p.id, { tileId: t.id });
 
   if (isProperty(t)) {
     const ps = s.properties[t.id];
@@ -261,14 +283,24 @@ function resolveLanding(ctx: Ctx, p: Player, opts: { rentMultiplier?: number; ut
     if (t.type === 'utility' && opts.utilityForce10) rent = diceSum * 10;
     if (opts.rentMultiplier) rent *= opts.rentMultiplier;
     const owner = player(s, ps.owner);
-    const paid = charge(ctx, p.id, rent, [owner.id], `alquiler de ${t.name}`);
-    if (paid) emit(ctx, 'rent', `${p.name} pagó ${fmt(rent)} de alquiler a ${owner.name} por ${t.name}.`, p.id, { amount: rent, to: owner.id });
-    if (paid) finishResolution(ctx);
+    if (s.settings.rentDoubleOrNothing && rent > 0 && !owner.bankrupt) {
+      s.rentOffer = { payerId: p.id, ownerId: owner.id, tileId: t.id, rent, proposed: false };
+      s.turnPhase = 'RENT_OFFER';
+      emit(ctx, 'rent_due', `${p.name} debe ${fmt(rent)} de alquiler a ${owner.name} por ${t.name}. Puede pagar o proponer doble o nada.`, p.id, { amount: rent, to: owner.id, tileId: t.id });
+      return;
+    }
+    payRent(ctx, p, owner, rent, t.name);
     return;
   }
 
   switch (t.type) {
     case 'tax':
+      if (t.id === CASINO_TILE && s.settings.casino) {
+        s.casino = { playerId: p.id, played: false, double: null };
+        s.turnPhase = 'CASINO';
+        emit(ctx, 'casino_enter', `${p.name} entró al Casino.`, p.id);
+        return;
+      }
       if (t.percent) { s.turnPhase = 'TAX_CHOICE'; return; }
       if (charge(ctx, p.id, t.amount, [], `impuesto: ${t.name}`)) {
         emit(ctx, 'tax', `${p.name} pagó ${fmt(t.amount)} de ${t.name}.`, p.id, { amount: t.amount });
@@ -351,6 +383,13 @@ function roll(ctx: Ctx, playerId: string) {
   const [a, b] = r.dice;
   const doubles = a === b;
   emit(ctx, 'roll', `${p.name} tiró ${a} + ${b} = ${a + b}${doubles ? ' (¡dobles!)' : ''}.`, p.id, { dice: r.dice });
+
+  if (a === 6 && b === 6 && s.settings.jackpot && s.jackpot > 0) {
+    const pot = s.jackpot;
+    s.jackpot = 0;
+    p.cash += pot;
+    emit(ctx, 'jackpot', `¡DOBLE SEIS! ${p.name} se lleva el JACKPOT del Casino: ${fmt(pot)}.`, p.id, { amount: pot });
+  }
 
   if (p.inJail) {
     if (doubles) {
@@ -481,6 +520,8 @@ function applyCard(ctx: Ctx, p: Player, c: Card) {
       }
       return;
     }
+    case 'challenge':
+      return startChallengePick(ctx, p, e.amount);
     case 'collectEach': {
       // Cada jugador paga lo que puede; simplificación: se descuenta directo (montos chicos).
       let total = 0;
@@ -748,7 +789,7 @@ function validateSide(s: GameState, ownerId: string, side: TradeSide) {
 function tradePropose(ctx: Ctx, playerId: string, toPlayerId: string, give: TradeSide, receive: TradeSide) {
   const s = ctx.s;
   requirePlaying(ctx);
-  if (s.turnPhase === 'AUCTION' || s.turnPhase === 'TAX_CHOICE') throw new RuleError('Esperá a que termine la acción en curso.');
+  if (['AUCTION', 'TAX_CHOICE', 'CASINO', 'RENT_OFFER', 'CHALLENGE'].includes(s.turnPhase)) throw new RuleError('Esperá a que termine la acción en curso.');
   if (s.pendingTrade) throw new RuleError('Ya hay una propuesta pendiente.');
   if (playerId === toPlayerId) throw new RuleError('No podés negociar con vos mismo.');
   const from = player(s, playerId);
@@ -880,6 +921,16 @@ function bankrupt(ctx: Ctx, debtorId: string, creditorIds: string[]) {
   debtor.inJail = false;
   s.debt = null;
   if (s.pendingTrade && (s.pendingTrade.fromId === debtorId || s.pendingTrade.toId === debtorId)) s.pendingTrade = null;
+  if (s.challenge && (s.challenge.fromId === debtorId || s.challenge.toId === debtorId)) {
+    const rp = s.challenge.returnPhase;
+    s.challenge = null;
+    if (s.turnPhase === 'CHALLENGE') s.turnPhase = rp;
+  }
+  if (s.rentOffer && (s.rentOffer.payerId === debtorId || s.rentOffer.ownerId === debtorId)) {
+    s.rentOffer = null;
+    if (s.turnPhase === 'RENT_OFFER') s.turnPhase = 'END_TURN';
+  }
+  if (s.casino && s.casino.playerId === debtorId) { s.casino = null; if (s.turnPhase === 'CASINO') s.turnPhase = 'END_TURN'; }
 
   if (activePlayers(s).length <= 1) return endGame(ctx, activePlayers(s)[0]?.id ?? null);
 
@@ -890,6 +941,413 @@ function bankrupt(ctx: Ctx, debtorId: string, creditorIds: string[]) {
   }
   s.auctionQueue = [];
   if (wasCurrent) nextTurn(ctx);
+}
+
+function payRent(ctx: Ctx, p: Player, owner: Player, rent: number, tileName: string) {
+  const paid = charge(ctx, p.id, rent, [owner.id], `alquiler de ${tileName}`);
+  if (paid) {
+    emit(ctx, 'rent', `${p.name} pagó ${fmt(rent)} de alquiler a ${owner.name} por ${tileName}.`, p.id, { amount: rent, to: owner.id });
+    finishResolution(ctx);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Alquiler a doble o nada
+// ---------------------------------------------------------------------------
+
+function rentPay(ctx: Ctx, playerId: string) {
+  requirePlaying(ctx); requirePhase(ctx, 'RENT_OFFER');
+  const o = ctx.s.rentOffer!;
+  if (o.payerId !== playerId) throw new RuleError('No te corresponde.');
+  ctx.s.rentOffer = null;
+  payRent(ctx, player(ctx.s, o.payerId), player(ctx.s, o.ownerId), o.rent, tile(o.tileId).name);
+}
+
+function rentDonPropose(ctx: Ctx, playerId: string) {
+  requirePlaying(ctx); requirePhase(ctx, 'RENT_OFFER');
+  const o = ctx.s.rentOffer!;
+  if (o.payerId !== playerId) throw new RuleError('No te corresponde.');
+  if (o.proposed) throw new RuleError('Ya propusiste.');
+  const payer = player(ctx.s, playerId);
+  if (payer.cash < o.rent * 2 && liquidationValue(ctx.s, playerId) < o.rent * 2) throw new RuleError('No podrías pagar el doble si perdés.');
+  o.proposed = true;
+  emit(ctx, 'rent_don_proposed', `${payer.name} le propone doble o nada a ${player(ctx.s, o.ownerId).name}: con 7 o más no paga nada, con 6 o menos paga ${fmt(o.rent * 2)}.`, playerId, { amount: o.rent, to: o.ownerId });
+}
+
+function rentDonAnswer(ctx: Ctx, playerId: string, accept: boolean) {
+  const s = ctx.s;
+  requirePlaying(ctx); requirePhase(ctx, 'RENT_OFFER');
+  const o = s.rentOffer!;
+  if (o.ownerId !== playerId) throw new RuleError('No te corresponde.');
+  if (!o.proposed) throw new RuleError('Todavía no te propusieron nada.');
+  const payer = player(s, o.payerId);
+  const owner = player(s, o.ownerId);
+  const name = tile(o.tileId).name;
+  s.rentOffer = null;
+  if (!accept) {
+    emit(ctx, 'rent_don_rejected', `${owner.name} no aceptó el doble o nada.`, playerId);
+    return payRent(ctx, payer, owner, o.rent, name);
+  }
+  const r = rollDice(s.seed);
+  s.seed = r.seed;
+  const sum = r.dice[0] + r.dice[1];
+  const win = sum >= 7;
+  emit(ctx, 'rent_don_roll', `${owner.name} aceptó. ${payer.name} tiró ${r.dice[0]} + ${r.dice[1]} = ${sum}: ${win ? '¡no paga nada!' : `paga el doble, ${fmt(o.rent * 2)}.`}`, o.payerId, { dice: r.dice, win, amount: o.rent * 2, to: o.ownerId });
+  if (win) return finishResolution(ctx);
+  payRent(ctx, payer, owner, o.rent * 2, name);
+}
+
+// ---------------------------------------------------------------------------
+// Casino
+// ---------------------------------------------------------------------------
+
+function casinoPlayer(ctx: Ctx, playerId: string): Player {
+  requirePlaying(ctx); requirePhase(ctx, 'CASINO');
+  const c = ctx.s.casino!;
+  if (c.playerId !== playerId) throw new RuleError('No estás en el Casino.');
+  return player(ctx.s, playerId);
+}
+
+function casinoLoss(ctx: Ctx, amount: number) {
+  if (ctx.s.settings.jackpot) ctx.s.jackpot += amount;
+  else if (ctx.s.settings.freeParkingPot) ctx.s.freeParkingPot += amount;
+}
+
+function validateBet(ctx: Ctx, p: Player, amount: number) {
+  if (!Number.isInteger(amount) || amount < 10) throw new RuleError('La apuesta mínima es ₲ 10.000.');
+  if (amount > ctx.s.settings.casinoMaxBet) throw new RuleError(`La apuesta máxima es ${fmt(ctx.s.settings.casinoMaxBet)}.`);
+  if (amount > p.cash) throw new RuleError('No tenés ese efectivo.');
+}
+
+function casinoLeave(ctx: Ctx, playerId: string) {
+  const p = casinoPlayer(ctx, playerId);
+  const c = ctx.s.casino!;
+  if (c.double) {
+    // salir con doble o nada en curso equivale a retirar lo acumulado
+    p.cash += c.double.stake;
+    emit(ctx, 'casino_cashout', `${p.name} se retira del Casino con ${fmt(c.double.stake)}.`, playerId, { amount: c.double.stake });
+  } else {
+    emit(ctx, 'casino_leave', `${p.name} salió del Casino.`, playerId);
+  }
+  ctx.s.casino = null;
+  finishResolution(ctx);
+}
+
+function casinoPlay(ctx: Ctx, playerId: string, game: 'ruleta' | 'quiniela' | 'carrera', amount: number, pick?: number) {
+  const s = ctx.s;
+  const p = casinoPlayer(ctx, playerId);
+  const c = s.casino!;
+  if (c.played || c.double) throw new RuleError('Una apuesta por visita al Casino.');
+  validateBet(ctx, p, amount);
+  p.cash -= amount;
+  c.played = true;
+
+  if (game === 'ruleta') {
+    const r = nextRandomInt(ctx, 100) + 1; // 1..100
+    const win = r <= 49;
+    if (win) p.cash += amount * 2; else casinoLoss(ctx, amount);
+    emit(ctx, 'casino_result', `${p.name} apostó ${fmt(amount)} en la Ruleta: salió ${r}, ${win ? `¡ganó ${fmt(amount)}!` : 'perdió.'}`, playerId,
+      { game, amount, roll: r, win, payout: win ? amount * 2 : 0 });
+  } else if (game === 'quiniela') {
+    if (pick === undefined || pick < 2 || pick > 12) throw new RuleError('Elegí un número del 2 al 12.');
+    const r = rollDice(s.seed); s.seed = r.seed;
+    const sum = r.dice[0] + r.dice[1];
+    const win = sum === pick;
+    const payout = win ? amount * (QUINIELA_PAYOUT[pick] + 1) : 0;
+    if (win) p.cash += payout; else casinoLoss(ctx, amount);
+    emit(ctx, 'casino_result', `${p.name} jugó ${fmt(amount)} al ${pick} en la Quiniela: salió ${r.dice[0]} + ${r.dice[1]} = ${sum}, ${win ? `¡ganó ${fmt(payout - amount)}!` : 'perdió.'}`, playerId,
+      { game, amount, pick, dice: r.dice, sum, win, payout });
+  } else {
+    if (pick === undefined || pick < 0 || pick > 5) throw new RuleError('Elegí una carreta del 1 al 6.');
+    // Carrera: 6 carretas avanzan 1-3 por paso durante 10 pasos; gana la que más lejos llega (empates: la primera)
+    const steps = 10;
+    const race: number[][] = Array.from({ length: 6 }, () => []);
+    const totals = [0, 0, 0, 0, 0, 0];
+    for (let st = 0; st < steps; st++) {
+      for (let k = 0; k < 6; k++) {
+        totals[k] += 1 + nextRandomInt(ctx, 3);
+        race[k].push(totals[k]);
+      }
+    }
+    let winner = 0;
+    for (let k = 1; k < 6; k++) if (totals[k] > totals[winner]) winner = k;
+    const win = winner === pick;
+    const payout = win ? amount * (CARRETA_PAYOUT + 1) : 0;
+    if (win) p.cash += payout; else casinoLoss(ctx, amount);
+    emit(ctx, 'casino_result', `${p.name} apostó ${fmt(amount)} a la carreta ${pick + 1}: ganó la carreta ${winner + 1}, ${win ? `¡cobra ${fmt(payout - amount)}!` : 'perdió.'}`, playerId,
+      { game, amount, pick, race, winner, win, payout });
+  }
+  // El jugador puede quedarse mirando y salir cuando quiera (CASINO_LEAVE)
+}
+
+function casinoDoubleStart(ctx: Ctx, playerId: string, amount: number) {
+  const s = ctx.s;
+  const p = casinoPlayer(ctx, playerId);
+  const c = s.casino!;
+  if (c.played || c.double) throw new RuleError('Una apuesta por visita al Casino.');
+  validateBet(ctx, p, amount);
+  p.cash -= amount;
+  c.played = true;
+  c.double = { stake: amount, step: 0 };
+  casinoDoubleRoll(ctx, p);
+}
+
+function casinoDoubleContinue(ctx: Ctx, playerId: string) {
+  const p = casinoPlayer(ctx, playerId);
+  const c = ctx.s.casino!;
+  if (!c.double) throw new RuleError('No hay doble o nada en curso.');
+  casinoDoubleRoll(ctx, p);
+}
+
+function casinoDoubleRoll(ctx: Ctx, p: Player) {
+  const s = ctx.s;
+  const c = s.casino!;
+  const d = c.double!;
+  const r = rollDice(s.seed); s.seed = r.seed;
+  const sum = r.dice[0] + r.dice[1];
+  const win = sum % 2 === 0;
+  if (win) {
+    d.stake *= 2;
+    d.step++;
+    emit(ctx, 'casino_double', `${p.name} tiró ${r.dice[0]} + ${r.dice[1]} (par): ¡dobla a ${fmt(d.stake)}! Paso ${d.step} de ${DOUBLE_MAX_STEPS}.`, p.id, { dice: r.dice, win: true, stake: d.stake, step: d.step });
+    if (d.step >= DOUBLE_MAX_STEPS) {
+      p.cash += d.stake;
+      emit(ctx, 'casino_cashout', `${p.name} llegó al tope y se lleva ${fmt(d.stake)}.`, p.id, { amount: d.stake });
+      c.double = null;
+    }
+  } else {
+    emit(ctx, 'casino_double', `${p.name} tiró ${r.dice[0]} + ${r.dice[1]} (impar): perdió ${fmt(d.stake)}.`, p.id, { dice: r.dice, win: false, stake: d.stake, step: d.step });
+    casinoLoss(ctx, d.stake);
+    c.double = null;
+  }
+}
+
+function casinoCashout(ctx: Ctx, playerId: string) {
+  const p = casinoPlayer(ctx, playerId);
+  const c = ctx.s.casino!;
+  if (!c.double) throw new RuleError('No hay nada que retirar.');
+  p.cash += c.double.stake;
+  emit(ctx, 'casino_cashout', `${p.name} se retira con ${fmt(c.double.stake)}.`, playerId, { amount: c.double.stake });
+  c.double = null;
+}
+
+/** Entero uniforme en [0, n) usando la semilla de la partida. */
+function nextRandomInt(ctx: Ctx, n: number): number {
+  const r = nextRandom(ctx.s.seed);
+  ctx.s.seed = r.seed;
+  return Math.floor(r.value * n);
+}
+
+// ---------------------------------------------------------------------------
+// Desafíos (mini-juegos entre dos jugadores)
+// ---------------------------------------------------------------------------
+
+function startChallengePick(ctx: Ctx, p: Player, amount: number) {
+  const s = ctx.s;
+  const rivals = activePlayers(s).filter(x => x.id !== p.id && x.cash > 0);
+  if (!rivals.length || p.cash <= 0) return finishResolution(ctx);
+  s.tradeCounter++;
+  s.challenge = {
+    id: `d${s.tradeCounter}`, kind: null, fromId: p.id, toId: null, amount, status: 'pick', forced: true,
+    returnPhase: 'END_TURN', data: {}, secret: {},   // al terminar se llama a finishResolution (respeta los dobles)
+  };
+  s.turnPhase = 'CHALLENGE';
+}
+
+function challengePropose(ctx: Ctx, playerId: string, toId: string, kind: ChallengeKind, amount: number) {
+  const s = ctx.s;
+  requirePlaying(ctx);
+  if (!s.settings.challenges) throw new RuleError('Los desafíos no están activados en esta sala.');
+  if (!CHALLENGE_KINDS.includes(kind)) throw new RuleError('Mini-juego inválido.');
+  const from = player(s, playerId);
+  const to = player(s, toId);
+  if (from.bankrupt || to.bankrupt || from.id === to.id) throw new RuleError('Rival inválido.');
+
+  const picking = s.turnPhase === 'CHALLENGE' && s.challenge?.status === 'pick' && s.challenge.fromId === playerId;
+  if (picking) {
+    const c = s.challenge!;
+    const amt = Math.min(c.amount, from.cash, to.cash);
+    if (amt <= 0) { s.challenge = null; s.turnPhase = c.returnPhase; return; }
+    c.kind = kind; c.toId = toId; c.amount = amt; c.status = 'playing';
+    emit(ctx, 'challenge_start', `${from.name} desafió a ${to.name} a ${challengeName(kind)} por ${fmt(amt)} (por carta: no puede negarse).`, playerId, { kind, amount: amt, to: toId, forced: true });
+    return beginChallenge(ctx);
+  }
+
+  requireCurrent(ctx, playerId);
+  requirePhase(ctx, 'AWAITING_ROLL', 'END_TURN');
+  if (s.challenge) throw new RuleError('Ya hay un desafío en curso.');
+  if (!Number.isInteger(amount) || amount < 10) throw new RuleError('La apuesta mínima es ₲ 10.000.');
+  if (amount > from.cash) throw new RuleError('No tenés ese efectivo.');
+  if (amount > to.cash) throw new RuleError(`${to.name} no tiene ese efectivo.`);
+  s.tradeCounter++;
+  s.challenge = {
+    id: `d${s.tradeCounter}`, kind, fromId: playerId, toId, amount, status: 'pending', forced: false,
+    returnPhase: s.turnPhase, data: {}, secret: {},
+  };
+  s.turnPhase = 'CHALLENGE';
+  emit(ctx, 'challenge_proposed', `${from.name} desafía a ${to.name} a ${challengeName(kind)} por ${fmt(amount)}.`, playerId, { kind, amount, to: toId });
+}
+
+export function challengeName(kind: ChallengeKind): string {
+  return { dados: 'Duelo de dados', ppt: 'Piedra, papel o tijera', trivia: 'Trivia paraguaya', terere: 'Tereré caliente' }[kind];
+}
+
+function challengeAnswer(ctx: Ctx, playerId: string, accept: boolean) {
+  const s = ctx.s;
+  requirePlaying(ctx); requirePhase(ctx, 'CHALLENGE');
+  const c = s.challenge!;
+  if (c.status !== 'pending') throw new RuleError('El desafío ya empezó.');
+  if (c.toId !== playerId) throw new RuleError('El desafío no es para vos.');
+  if (!accept) {
+    emit(ctx, 'challenge_rejected', `${player(s, playerId).name} no aceptó el desafío.`, playerId);
+    s.turnPhase = c.returnPhase;
+    s.challenge = null;
+    return;
+  }
+  c.status = 'playing';
+  emit(ctx, 'challenge_accepted', `${player(s, playerId).name} aceptó el desafío. ¡Empieza ${challengeName(c.kind!)}!`, playerId, { kind: c.kind });
+  beginChallenge(ctx);
+}
+
+function beginChallenge(ctx: Ctx) {
+  const s = ctx.s;
+  const c = s.challenge!;
+  switch (c.kind) {
+    case 'dados': {
+      // Se tira hasta que no haya empate
+      for (let i = 0; i < 20; i++) {
+        const a = rollDice(s.seed); s.seed = a.seed;
+        const b = rollDice(a.seed); s.seed = b.seed;
+        c.data.rolls = { [c.fromId]: a.dice, [c.toId!]: b.dice };
+        const sa = a.dice[0] + a.dice[1], sb = b.dice[0] + b.dice[1];
+        if (sa !== sb) return finishChallenge(ctx, sa > sb ? c.fromId : c.toId!, `${sa} contra ${sb}`);
+        emit(ctx, 'challenge_tie', `Empate ${sa} a ${sb}: se tira de nuevo.`, undefined, { rolls: c.data.rolls });
+      }
+      return finishChallenge(ctx, null, 'empate persistente');
+    }
+    case 'ppt':
+      c.data.rounds = []; c.data.score = { [c.fromId]: 0, [c.toId!]: 0 }; c.data.chosen = []; c.secret.choices = {};
+      return;
+    case 'trivia':
+      c.data.qIndex = 0; c.secret.used = [];
+      return nextTriviaQuestion(ctx);
+    case 'terere':
+      c.data.go = false;
+      return;
+  }
+}
+
+function nextTriviaQuestion(ctx: Ctx) {
+  const c = ctx.s.challenge!;
+  const used = c.secret.used!;
+  let idx = nextRandomInt(ctx, TRIVIA.length);
+  for (let i = 0; i < TRIVIA.length && used.includes(idx); i++) idx = (idx + 1) % TRIVIA.length;
+  used.push(idx);
+  const t = TRIVIA[idx];
+  c.data.question = { q: t.q, options: [...t.options] };
+  c.data.answered = {};
+  c.secret.answer = t.answer;
+}
+
+function challengeMove(ctx: Ctx, playerId: string, choice?: PptChoice, answer?: number) {
+  const s = ctx.s;
+  requirePlaying(ctx); requirePhase(ctx, 'CHALLENGE');
+  const c = s.challenge!;
+  if (c.status !== 'playing') throw new RuleError('El desafío no está en juego.');
+  if (playerId !== c.fromId && playerId !== c.toId) throw new RuleError('No participás de este desafío.');
+  const other = playerId === c.fromId ? c.toId! : c.fromId;
+
+  switch (c.kind) {
+    case 'ppt': {
+      if (!choice || !['piedra', 'papel', 'tijera'].includes(choice)) throw new RuleError('Elegí piedra, papel o tijera.');
+      if (c.secret.choices![playerId]) throw new RuleError('Ya elegiste en esta ronda.');
+      c.secret.choices![playerId] = choice;
+      c.data.chosen = Object.keys(c.secret.choices!);
+      if (!c.secret.choices![other]) return;
+      const a = c.secret.choices![c.fromId], b = c.secret.choices![c.toId!];
+      const beats: Record<PptChoice, PptChoice> = { piedra: 'tijera', papel: 'piedra', tijera: 'papel' };
+      const winner = a === b ? null : beats[a] === b ? c.fromId : c.toId!;
+      c.data.rounds!.push({ a, b, winner });
+      if (winner) c.data.score![winner]++;
+      c.secret.choices = {}; c.data.chosen = [];
+      emit(ctx, 'challenge_round', `Ronda ${c.data.rounds!.length}: ${player(s, c.fromId).name} ${a} · ${player(s, c.toId!).name} ${b} → ${winner ? `punto para ${player(s, winner).name}` : 'empate'}.`, undefined, { a, b, winner, score: c.data.score });
+      const [s1, s2] = [c.data.score![c.fromId], c.data.score![c.toId!]];
+      if (s1 >= 2) return finishChallenge(ctx, c.fromId, `${s1} a ${s2}`);
+      if (s2 >= 2) return finishChallenge(ctx, c.toId!, `${s2} a ${s1}`);
+      if (c.data.rounds!.length >= 7) return finishChallenge(ctx, null, 'demasiados empates');
+      return;
+    }
+    case 'trivia': {
+      if (answer === undefined || answer < 0 || answer > 3) throw new RuleError('Elegí una opción.');
+      if (c.data.answered![playerId] !== undefined) throw new RuleError('Ya respondiste esta pregunta.');
+      c.data.answered![playerId] = answer;
+      const name = player(s, playerId).name;
+      if (answer === c.secret.answer) {
+        emit(ctx, 'challenge_round', `${name} respondió "${c.data.question!.options[answer]}": ¡correcto!`, playerId, { correct: true, answer: c.secret.answer });
+        return finishChallenge(ctx, playerId, 'acertó primero');
+      }
+      emit(ctx, 'challenge_round', `${name} respondió "${c.data.question!.options[answer]}": incorrecto.`, playerId, { correct: false });
+      if (c.data.answered![other] === undefined) return; // el otro todavía puede acertar
+      // Los dos fallaron
+      emit(ctx, 'challenge_round', `Nadie acertó. La respuesta era "${c.data.question!.options[c.secret.answer!]}".`, undefined, { reveal: c.secret.answer });
+      c.data.qIndex!++;
+      if (c.data.qIndex! >= 3) {
+        const r = rollDice(s.seed); s.seed = r.seed;
+        const w = r.dice[0] >= r.dice[1] ? c.fromId : c.toId!; // desempate a un dado
+        return finishChallenge(ctx, w, 'desempate al dado tras tres preguntas falladas');
+      }
+      return nextTriviaQuestion(ctx);
+    }
+    case 'terere': {
+      if (!c.data.go) {
+        emit(ctx, 'challenge_round', `${player(s, playerId).name} se adelantó: ¡tocó antes de tiempo!`, playerId, { falseStart: true });
+        return finishChallenge(ctx, other, 'salida en falso del rival');
+      }
+      return finishChallenge(ctx, playerId, 'tocó primero');
+    }
+    default:
+      throw new RuleError('Este desafío no recibe jugadas.');
+  }
+}
+
+function challengeGo(ctx: Ctx) {
+  const c = ctx.s.challenge;
+  if (!c || c.kind !== 'terere' || c.status !== 'playing' || c.data.go) return;
+  c.data.go = true;
+  emit(ctx, 'challenge_go', '¡TERERÉ! ¡Tocá ahora!', undefined, { go: true });
+}
+
+function finishChallenge(ctx: Ctx, winnerId: string | null, reason: string) {
+  const s = ctx.s;
+  const c = s.challenge!;
+  c.status = 'done';
+  c.data.winnerId = winnerId;
+  c.data.reason = reason;
+  if (winnerId) {
+    const loserId = winnerId === c.fromId ? c.toId! : c.fromId;
+    const winner = player(s, winnerId), loser = player(s, loserId);
+    const amt = Math.min(c.amount, loser.cash);
+    loser.cash -= amt;
+    winner.cash += amt;
+    emit(ctx, 'challenge_done', `¡${winner.name} ganó el desafío (${reason}) y cobra ${fmt(amt)} de ${loser.name}!`, winnerId, { kind: c.kind, winner: winnerId, loser: loserId, amount: amt, to: winnerId });
+  } else {
+    emit(ctx, 'challenge_done', `El desafío terminó sin ganador (${reason}). Nadie paga.`, undefined, { kind: c.kind, winner: null, amount: 0 });
+  }
+  s.challenge = null;
+  s.turnPhase = c.returnPhase;
+  if (c.forced) finishResolution(ctx);
+}
+
+function challengeCancel(ctx: Ctx, playerId: string) {
+  const s = ctx.s;
+  requirePlaying(ctx);
+  const c = s.challenge;
+  if (!c) return;
+  if (playerId !== s.hostId && playerId !== c.fromId) throw new RuleError('Solo el anfitrión puede anular un desafío.');
+  emit(ctx, 'challenge_cancelled', 'El desafío se anuló; nadie paga.', playerId);
+  s.challenge = null;
+  s.turnPhase = c.returnPhase;
+  if (c.forced) finishResolution(ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -973,6 +1431,14 @@ function forceEndTurn(ctx: Ctx): void {
     } else if (ph === 'DEBT') {
       autoLiquidate(ctx, p.id);
       if (s.debt) declareBankruptcy(ctx, p.id);
+    } else if (ph === 'CASINO') casinoLeave(ctx, s.casino!.playerId);
+    else if (ph === 'RENT_OFFER') {
+      if (s.rentOffer!.proposed) rentDonAnswer(ctx, s.rentOffer!.ownerId, false);
+      else rentPay(ctx, s.rentOffer!.payerId);
+    } else if (ph === 'CHALLENGE') {
+      const c = s.challenge!;
+      if (c.status === 'pending') challengeAnswer(ctx, c.toId!, false);
+      else challengeCancel(ctx, s.hostId);
     } else if (ph === 'END_TURN') nextTurn(ctx);
   }
 }
@@ -1024,6 +1490,21 @@ export function applyAction(state: GameState, action: Action): { state: GameStat
       break;
     case 'LEAVE_GAME': leaveGame(ctx, action.playerId, action.targetId); break;
     case 'SET_BOT': setBot(ctx, action.playerId, action.targetId, action.isBot); break;
+    case 'CASINO_PLAY': casinoPlay(ctx, action.playerId, action.game, action.amount, action.pick); break;
+    case 'CASINO_DOUBLE_START': casinoDoubleStart(ctx, action.playerId, action.amount); break;
+    case 'CASINO_DOUBLE_CONTINUE': casinoDoubleContinue(ctx, action.playerId); break;
+    case 'CASINO_CASHOUT': casinoCashout(ctx, action.playerId); break;
+    case 'CASINO_LEAVE': casinoLeave(ctx, action.playerId); break;
+    case 'RENT_PAY': rentPay(ctx, action.playerId); break;
+    case 'RENT_DON_PROPOSE': rentDonPropose(ctx, action.playerId); break;
+    case 'RENT_DON_ACCEPT': rentDonAnswer(ctx, action.playerId, true); break;
+    case 'RENT_DON_REJECT': rentDonAnswer(ctx, action.playerId, false); break;
+    case 'CHALLENGE_PROPOSE': challengePropose(ctx, action.playerId, action.toId, action.kind, action.amount); break;
+    case 'CHALLENGE_ACCEPT': challengeAnswer(ctx, action.playerId, true); break;
+    case 'CHALLENGE_REJECT': challengeAnswer(ctx, action.playerId, false); break;
+    case 'CHALLENGE_MOVE': challengeMove(ctx, action.playerId, action.choice, action.answer); break;
+    case 'CHALLENGE_GO': challengeGo(ctx); break;
+    case 'CHALLENGE_CANCEL': challengeCancel(ctx, action.playerId); break;
     default: throw new RuleError('Acción desconocida.');
   }
   return { state: ctx.s, events: ctx.events };
@@ -1048,6 +1529,24 @@ export function legalActions(state: GameState, playerId: string): Set<Action['ty
     if (ph === 'TAX_CHOICE') out.add('TAX_CHOICE');
     if (ph === 'END_TURN') out.add('END_TURN');
     if (ph === 'DEBT') { out.add('DECLARE_BANKRUPTCY'); if (state.debt && p.cash >= state.debt.amount) out.add('PAY_DEBT'); }
+    if ((ph === 'AWAITING_ROLL' || ph === 'END_TURN') && state.settings.challenges && !state.challenge && activePlayers(state).length > 1) out.add('CHALLENGE_PROPOSE');
+  }
+  if (ph === 'CASINO' && state.casino?.playerId === playerId) {
+    out.add('CASINO_LEAVE');
+    if (!state.casino.played) { out.add('CASINO_PLAY'); out.add('CASINO_DOUBLE_START'); }
+    if (state.casino.double) { out.add('CASINO_DOUBLE_CONTINUE'); out.add('CASINO_CASHOUT'); }
+  }
+  if (ph === 'RENT_OFFER' && state.rentOffer) {
+    const o = state.rentOffer;
+    if (o.payerId === playerId && !o.proposed) { out.add('RENT_PAY'); out.add('RENT_DON_PROPOSE'); }
+    if (o.ownerId === playerId && o.proposed) { out.add('RENT_DON_ACCEPT'); out.add('RENT_DON_REJECT'); }
+  }
+  if (ph === 'CHALLENGE' && state.challenge) {
+    const c = state.challenge;
+    if (c.status === 'pick' && c.fromId === playerId) out.add('CHALLENGE_PROPOSE');
+    if (c.status === 'pending' && c.toId === playerId) { out.add('CHALLENGE_ACCEPT'); out.add('CHALLENGE_REJECT'); }
+    if (c.status === 'playing' && (c.fromId === playerId || c.toId === playerId) && c.kind !== 'dados') out.add('CHALLENGE_MOVE');
+    if (playerId === state.hostId) out.add('CHALLENGE_CANCEL');
   }
   if (ph === 'AUCTION' && state.auction?.activeBidders.includes(playerId)) { out.add('BID'); out.add('AUCTION_PASS'); }
   const mgmt = (ph === 'AWAITING_ROLL' || ph === 'END_TURN' || ph === 'AWAITING_BUY') || (ph === 'DEBT' && isCurrent);

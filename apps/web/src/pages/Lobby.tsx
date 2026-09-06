@@ -111,6 +111,18 @@ export default function Lobby() {
                 <option value={0}>Sin límite</option><option value={60}>60 s</option><option value={120}>120 s</option><option value={180}>180 s</option>
               </select>
             </Row>
+            <div className="my-2 border-t border-black/10 pt-2 text-xs font-bold uppercase tracking-wide text-ink/50">🎰 Timba (opcional)</div>
+            <Toggle label="Casino en la casilla 38 (en vez de Impuesto al lujo)" checked={s.casino} disabled={!isHost} onChange={v => setSetting('casino', v)} />
+            {s.casino && (
+              <Row label="Apuesta máxima en el Casino">
+                <select className="input !w-auto !py-1" disabled={!isHost} value={s.casinoMaxBet} onChange={e => setSetting('casinoMaxBet', Number(e.target.value))}>
+                  {[200, 500, 1000, 2000].map(v => <option key={v} value={v}>{money(v)}</option>)}
+                </select>
+              </Row>
+            )}
+            <Toggle label="Jackpot: lo perdido en el Casino se acumula y el doble seis se lo lleva" checked={s.jackpot} disabled={!isHost} onChange={v => setSetting('jackpot', v)} />
+            <Toggle label="Alquiler a doble o nada (7+ no pagás, 6- pagás doble; el dueño decide)" checked={s.rentDoubleOrNothing} disabled={!isHost} onChange={v => setSetting('rentDoubleOrNothing', v)} />
+            <Toggle label="Desafíos entre jugadores (dados, piedra-papel-tijera, trivia, tereré) + cartas ¡Desafío!" checked={s.challenges} disabled={!isHost} onChange={v => setSetting('challenges', v)} />
             <Row label="Duración máxima">
               <select className="input !w-auto !py-1" disabled={!isHost} value={s.timeLimitMinutes} onChange={e => setSetting('timeLimitMinutes', Number(e.target.value))}>
                 <option value={0}>Sin límite</option><option value={60}>60 min</option><option value={90}>90 min</option><option value={120}>120 min</option>
