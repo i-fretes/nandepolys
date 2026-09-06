@@ -1,0 +1,379 @@
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
+import fastifyCors from '@fastify/cors';
+import { Server as IOServer, type Socket } from 'socket.io';
+import { nanoid } from 'nanoid';
+import {
+  MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, toClientState,
+  updateSettings, type Action, type GameEvent, type GameState, type TokenId,
+} from '@nandepoly/engine';
+import { ActionSchema, ChatSchema, CreateRoomSchema, JoinRoomSchema, RejoinSchema, SettingsSchema } from './protocol';
+import { RoomManager, type Room } from './rooms';
+import { botAction } from './bots';
+
+const PORT = Number(process.env.PORT ?? 8080);
+const HOST = process.env.HOST ?? '0.0.0.0';
+const DATA_DIR = process.env.DATA_DIR ?? null;
+const ROOM_TTL_HOURS = Number(process.env.ROOM_TTL_HOURS ?? 6);
+const AUCTION_SECONDS = Number(process.env.AUCTION_SECONDS ?? 20);
+const BOT_DELAY_MS = Number(process.env.BOT_DELAY_MS ?? 900);
+
+const here = dirname(fileURLToPath(import.meta.url));
+const candidates = [
+  process.env.PUBLIC_DIR,
+  resolve(here, '../public'),
+  resolve(here, '../../web/dist'),
+  resolve(here, '../../../apps/web/dist'),
+].filter(Boolean) as string[];
+const PUBLIC_DIR = candidates.find(p => existsSync(join(p, 'index.html'))) ?? null;
+
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
+await app.register(fastifyCors, { origin: true });
+
+if (PUBLIC_DIR) {
+  await app.register(fastifyStatic, { root: PUBLIC_DIR, wildcard: false });
+  app.setNotFoundHandler((req, reply) => {
+    if (req.raw.url?.startsWith('/api') || req.raw.url?.startsWith('/socket.io')) return reply.code(404).send({ error: 'not found' });
+    return reply.sendFile('index.html');
+  });
+  app.log.info(`Sirviendo cliente desde ${PUBLIC_DIR}`);
+} else {
+  app.log.warn('No se encontró el cliente compilado (apps/web/dist). Solo API/WebSocket.');
+}
+
+const rooms = new RoomManager(DATA_DIR, ROOM_TTL_HOURS * 3600 * 1000);
+
+app.get('/api/health', async () => ({ ok: true, rooms: rooms.rooms.size, uptime: process.uptime() }));
+app.get<{ Params: { code: string } }>('/api/rooms/:code', async (req, reply) => {
+  const r = rooms.get(req.params.code);
+  if (!r) return reply.code(404).send({ exists: false });
+  return {
+    exists: true, phase: r.state.phase, players: r.state.players.length,
+    takenTokens: r.state.players.map(p => p.token), names: r.state.players.map(p => p.name),
+  };
+});
+
+const io = new IOServer(app.server, { cors: { origin: true }, pingInterval: 10000, pingTimeout: 20000 });
+
+// -------------------------------------------------------------------------------------------
+// Sesiones de socket
+// -------------------------------------------------------------------------------------------
+
+interface Session { roomCode: string; playerId: string | null; playerToken: string; name: string }
+const sessions = new Map<string, Session>(); // socket.id → sesión
+const timers = new Map<string, { turn?: NodeJS.Timeout; auction?: NodeJS.Timeout; bot?: NodeJS.Timeout; limit?: NodeJS.Timeout }>();
+
+function ok<T>(data: T) { return { ok: true as const, ...data }; }
+function fail(message: string) { return { ok: false as const, error: message }; }
+
+function roomView(room: Room) {
+  return {
+    state: toClientState(room.state),
+    chat: room.chat.slice(-100),
+    auctionDeadline: room.auctionDeadline,
+    turnDeadline: room.turnDeadline,
+  };
+}
+
+function broadcast(room: Room, events: GameEvent[] = []) {
+  io.to(room.code).emit('state:update', { ...roomView(room), events });
+}
+
+function setConnected(room: Room, playerId: string, connected: boolean) {
+  const p = room.state.players.find(p => p.id === playerId);
+  if (p && p.connected !== connected) {
+    p.connected = connected;
+    return true;
+  }
+  return false;
+}
+
+/** Aplica una acción del motor, difunde y programa temporizadores/bots. */
+function dispatch(room: Room, action: Action): GameEvent[] {
+  const before = room.state;
+  const { state, events } = applyAction(before, action);
+  room.state = state;
+  rooms.touch(room);
+  afterStateChange(room, before);
+  broadcast(room, events);
+  return events;
+}
+
+function afterStateChange(room: Room, before: GameState) {
+  const s = room.state;
+  const t = timers.get(room.code) ?? {};
+  timers.set(room.code, t);
+
+  // Subasta: cuenta regresiva desde la última oferta/paso
+  if (t.auction) { clearTimeout(t.auction); t.auction = undefined; }
+  room.auctionDeadline = null;
+  if (s.phase === 'PLAYING' && s.turnPhase === 'AUCTION' && s.auction) {
+    room.auctionDeadline = Date.now() + AUCTION_SECONDS * 1000;
+    t.auction = setTimeout(() => {
+      try {
+        const a = room.state.auction;
+        if (!a || room.state.turnPhase !== 'AUCTION') return;
+        // Retirar a todos menos al mejor postor; si nadie ofertó, retirar a todos
+        let st = room.state;
+        for (const id of [...a.activeBidders]) {
+          if (st.auction && id !== st.auction.highestBidderId) st = applyAction(st, { type: 'AUCTION_PASS', playerId: id }).state;
+        }
+        if (st.auction) st = applyAction(st, { type: 'AUCTION_PASS', playerId: st.auction.activeBidders[0] }).state;
+        const prev = room.state;
+        room.state = st;
+        rooms.touch(room);
+        afterStateChange(room, prev);
+        broadcast(room, [{ type: 'info', text: 'La subasta se cerró por tiempo.' }]);
+      } catch (e) { app.log.error(e); }
+    }, AUCTION_SECONDS * 1000);
+  }
+
+  // Temporizador de turno (regla casera)
+  const turnChanged = before.turnNumber !== s.turnNumber || before.phase !== s.phase;
+  if (s.phase === 'PLAYING' && s.settings.turnTimerSeconds > 0) {
+    if (turnChanged || !t.turn) {
+      if (t.turn) clearTimeout(t.turn);
+      room.turnDeadline = Date.now() + s.settings.turnTimerSeconds * 1000;
+      t.turn = setTimeout(() => {
+        try {
+          if (room.state.phase !== 'PLAYING') return;
+          const prev = room.state;
+          room.state = applyAction(room.state, { type: 'FORCE_END_TURN', playerId: room.state.hostId }).state;
+          rooms.touch(room);
+          t.turn = undefined;
+          afterStateChange(room, prev);
+          broadcast(room, [{ type: 'info', text: 'Se acabó el tiempo del turno; se tomaron las decisiones por defecto.' }]);
+        } catch (e) { app.log.error(e); }
+      }, s.settings.turnTimerSeconds * 1000);
+    }
+  } else {
+    if (t.turn) { clearTimeout(t.turn); t.turn = undefined; }
+    room.turnDeadline = null;
+  }
+
+  // Límite de tiempo de partida
+  if (s.phase === 'PLAYING' && s.settings.timeLimitMinutes > 0 && s.startedAt && !t.limit) {
+    const remaining = s.startedAt + s.settings.timeLimitMinutes * 60000 - Date.now();
+    t.limit = setTimeout(() => {
+      try {
+        if (room.state.phase !== 'PLAYING') return;
+        dispatch(room, { type: 'END_GAME', playerId: room.state.hostId });
+      } catch (e) { app.log.error(e); }
+    }, Math.max(0, remaining));
+  }
+  if (s.phase !== 'PLAYING' && t.limit) { clearTimeout(t.limit); t.limit = undefined; }
+
+  // Bots
+  if (t.bot) { clearTimeout(t.bot); t.bot = undefined; }
+  if (s.phase === 'PLAYING') {
+    const next = botAction(s);
+    if (next) {
+      t.bot = setTimeout(() => {
+        t.bot = undefined;
+        try {
+          const a = botAction(room.state);
+          if (a) dispatch(room, a);
+        } catch (e) {
+          app.log.error(e);
+          // Si el bot se traba, forzamos el turno para no bloquear la partida
+          try { dispatch(room, { type: 'FORCE_END_TURN', playerId: room.state.hostId }); } catch { /* ignore */ }
+        }
+      }, BOT_DELAY_MS);
+    }
+  }
+}
+
+function pickColor(state: GameState): string {
+  return PLAYER_COLORS.find(c => !state.players.some(p => p.color === c)) ?? PLAYER_COLORS[0];
+}
+
+function handleError(e: unknown, cb?: (r: unknown) => void) {
+  if (e instanceof RuleError) return cb?.(fail(e.message));
+  if (e && typeof e === 'object' && 'issues' in e) return cb?.(fail('Datos inválidos.'));
+  app.log.error(e);
+  cb?.(fail('Error interno.'));
+}
+
+io.on('connection', (socket: Socket) => {
+  socket.on('room:create', (raw, cb) => {
+    try {
+      const data = CreateRoomSchema.parse(raw);
+      const playerId = rooms.newPlayerId();
+      const room = rooms.create(playerId, data.settings ?? {});
+      room.state = addPlayer(room.state, { id: playerId, name: data.name, token: data.token as TokenId, color: pickColor(room.state) });
+      const playerToken = rooms.newToken();
+      room.tokens[playerToken] = playerId;
+      attach(socket, room, playerId, playerToken, data.name);
+      rooms.touch(room);
+      cb?.(ok({ roomCode: room.code, playerId, playerToken, ...roomView(room) }));
+      broadcast(room);
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('room:join', (raw, cb) => {
+    try {
+      const data = JoinRoomSchema.parse(raw);
+      const room = rooms.get(data.roomCode);
+      if (!room) return cb?.(fail('No existe una sala con ese código.'));
+      const playerToken = rooms.newToken();
+      if (room.state.phase === 'LOBBY' && room.state.players.length < MAX_PLAYERS) {
+        const playerId = rooms.newPlayerId();
+        room.state = addPlayer(room.state, { id: playerId, name: data.name, token: data.token as TokenId, color: pickColor(room.state) });
+        room.tokens[playerToken] = playerId;
+        attach(socket, room, playerId, playerToken, data.name);
+        rooms.touch(room);
+        cb?.(ok({ roomCode: room.code, playerId, playerToken, spectator: false, ...roomView(room) }));
+        broadcast(room, [{ type: 'join', text: `${data.name} se unió a la sala.` }]);
+      } else {
+        room.spectators[playerToken] = data.name;
+        attach(socket, room, null, playerToken, data.name);
+        cb?.(ok({ roomCode: room.code, playerId: null, playerToken, spectator: true, ...roomView(room) }));
+        io.to(room.code).emit('chat:message', sysMsg(room, `${data.name} entró como espectador.`));
+      }
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('room:rejoin', (raw, cb) => {
+    try {
+      const data = RejoinSchema.parse(raw);
+      const room = rooms.get(data.roomCode);
+      if (!room) return cb?.(fail('La sala ya no existe.'));
+      const playerId = room.tokens[data.playerToken];
+      const spectatorName = room.spectators[data.playerToken];
+      if (!playerId && !spectatorName) return cb?.(fail('Sesión inválida.'));
+      const name = playerId ? room.state.players.find(p => p.id === playerId)?.name ?? '' : spectatorName;
+      attach(socket, room, playerId ?? null, data.playerToken, name);
+      if (playerId && setConnected(room, playerId, true)) broadcast(room, [{ type: 'reconnect', text: `${name} volvió a conectarse.`, playerId }]);
+      // Si mientras no estaba lo reemplazó un bot, recupera el control al volver
+      const pl = playerId ? room.state.players.find(p => p.id === playerId) : null;
+      if (pl && pl.isBot && room.state.phase === 'PLAYING' && !pl.bankrupt) {
+        try { dispatch(room, { type: 'SET_BOT', playerId, targetId: playerId, isBot: false }); } catch (e) { app.log.warn(e); }
+      }
+      cb?.(ok({ roomCode: room.code, playerId: playerId ?? null, playerToken: data.playerToken, spectator: !playerId, ...roomView(room) }));
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('room:settings', (raw, cb) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return cb?.(fail('Sin sala.'));
+      if (room.state.hostId !== sess.playerId) return cb?.(fail('Solo el anfitrión puede cambiar las reglas.'));
+      const settings = SettingsSchema.parse(raw);
+      room.state = updateSettings(room.state, settings);
+      rooms.touch(room);
+      cb?.(ok({}));
+      broadcast(room);
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('room:addBot', (_raw, cb) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return cb?.(fail('Sin sala.'));
+      if (room.state.hostId !== sess.playerId) return cb?.(fail('Solo el anfitrión puede agregar bots.'));
+      const tokens: TokenId[] = ['mate', 'chipa', 'nanduti', 'carreta', 'jaguarete', 'arpa'];
+      const free = tokens.find(t => !room.state.players.some(p => p.token === t));
+      if (!free) return cb?.(fail('No hay fichas libres.'));
+      const names = ['Bot Karaí', 'Bot Kuñataĩ', 'Bot Mitã', 'Bot Ñandejára', 'Bot Pombero'];
+      const name = names.find(n => !room.state.players.some(p => p.name === n)) ?? 'Bot';
+      room.state = addPlayer(room.state, { id: rooms.newPlayerId(), name, token: free, color: pickColor(room.state), isBot: true });
+      rooms.touch(room);
+      cb?.(ok({}));
+      broadcast(room, [{ type: 'join', text: `${name} se unió a la sala.` }]);
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('room:rematch', (_raw, cb) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return cb?.(fail('Sin sala.'));
+      if (room.state.hostId !== sess.playerId) return cb?.(fail('Solo el anfitrión puede pedir la revancha.'));
+      const before = room.state;
+      room.state = rematch(room.state, Math.floor(Math.random() * 2 ** 31));
+      room.chat.push(sysMsg(room, '¡Revancha! Nueva partida en el lobby.'));
+      rooms.touch(room);
+      afterStateChange(room, before);
+      cb?.(ok({}));
+      broadcast(room, [{ type: 'rematch', text: 'Revancha: todos de vuelta al lobby.' }]);
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('room:removePlayer', (raw, cb) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return cb?.(fail('Sin sala.'));
+      const targetId = typeof raw?.playerId === 'string' ? raw.playerId : sess.playerId;
+      if (targetId !== sess.playerId && room.state.hostId !== sess.playerId) return cb?.(fail('Solo el anfitrión puede expulsar.'));
+      const target = room.state.players.find(p => p.id === targetId);
+      room.state = removePlayer(room.state, targetId);
+      for (const [tok, pid] of Object.entries(room.tokens)) if (pid === targetId) delete room.tokens[tok];
+      rooms.touch(room);
+      cb?.(ok({}));
+      broadcast(room, [{ type: 'leave', text: `${target?.name ?? 'Un jugador'} salió de la sala.` }]);
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('game:action', (raw, cb) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return cb?.(fail('Sos espectador.'));
+      const parsed = ActionSchema.parse(raw);
+      const action = { ...parsed, playerId: sess.playerId } as Action;
+      if (action.type === 'LEAVE_GAME' && !action.targetId) action.targetId = sess.playerId;
+      dispatch(room, action);
+      cb?.(ok({}));
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('chat:send', (raw, cb) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess) return cb?.(fail('Sin sala.'));
+      const { text } = ChatSchema.parse(raw);
+      const msg = { id: nanoid(8), playerId: sess.playerId, name: sess.name, text, at: Date.now() };
+      room.chat.push(msg);
+      if (room.chat.length > 200) room.chat.splice(0, room.chat.length - 200);
+      rooms.touch(room);
+      io.to(room.code).emit('chat:message', msg);
+      cb?.(ok({}));
+    } catch (e) { handleError(e, cb); }
+  });
+
+  socket.on('disconnect', () => {
+    const sess = sessions.get(socket.id);
+    sessions.delete(socket.id);
+    if (!sess?.playerId) return;
+    const room = rooms.get(sess.roomCode);
+    if (!room) return;
+    // ¿Queda otro socket del mismo jugador?
+    const stillConnected = [...sessions.values()].some(s => s.roomCode === room.code && s.playerId === sess.playerId);
+    if (!stillConnected && setConnected(room, sess.playerId, false)) {
+      broadcast(room, [{ type: 'disconnect', text: `${sess.name} se desconectó.`, playerId: sess.playerId }]);
+    }
+  });
+});
+
+function attach(socket: Socket, room: Room, playerId: string | null, playerToken: string, name: string) {
+  const prev = sessions.get(socket.id);
+  if (prev) socket.leave(prev.roomCode);
+  sessions.set(socket.id, { roomCode: room.code, playerId, playerToken, name });
+  socket.join(room.code);
+}
+
+function sysMsg(room: Room, text: string) {
+  const msg = { id: nanoid(8), playerId: null, name: 'Sistema', text, at: Date.now() };
+  room.chat.push(msg);
+  return msg;
+}
+
+await app.listen({ port: PORT, host: HOST });
+app.log.info(`Ñandepoly escuchando en http://${HOST}:${PORT}`);
