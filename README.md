@@ -1,0 +1,164 @@
+# Ñandepoly
+
+Juego de compra-venta de propiedades estilo clásico, **ambientado en Paraguay**, para jugar **online de 2 a 6 personas** desde el navegador (PC o celular). Sin instalar nada: uno crea una sala, comparte el código o el link, y los demás entran.
+
+- 40 casillas, 28 propiedades y 32 cartas con nombres y humor paraguayos; moneda en guaraníes.
+- Reglas oficiales completas: subastas, alquileres dobles con grupo completo, construcción pareja, hipotecas al 110 %, cárcel (Tacumbú), intercambios, quiebra. Reglas caseras opcionales.
+- Servidor autoritativo (nadie puede hacer trampa), reconexión automática, chat, registro de jugadas, bots para rellenar.
+- Si alguien se va: el anfitrión puede reemplazarlo por un bot (recupera el control al volver) o sacarlo de la partida. Revancha con un botón. Ayuda de reglas dentro del juego, fichas que recorren el tablero y sonidos (con botón de silencio).
+
+> Proyecto independiente y sin fines comerciales. "Monopoly" es una marca de Hasbro; Ñandepoly no usa su nombre, arte ni textos.
+
+---
+
+## Cómo se juega (para tus amigos)
+
+1. Uno entra a la página y toca **Crear sala**. Recibe un código de 5 letras (ej. `TERERE`) y un link.
+2. Los demás abren el link (o ponen el código en **Unirme**), escriben su nombre y eligen ficha: mate, chipa, ñandutí, carreta, jaguareté o arpa.
+3. El anfitrión ajusta las reglas caseras si quiere y toca **¡Empezar partida!**
+4. En tu turno: **Tirar dados** → comprar / rechazar (va a subasta) → construir, hipotecar o intercambiar cuando quieras → **Terminar turno**.
+5. Si se te cae la conexión o cerrás la pestaña, volvé a abrir el mismo link: seguís con tu jugador. Si alguien no vuelve, el anfitrión puede ponerle un bot ("Reemplazar por bot" en su tarjeta) o sacarlo ("Sacar").
+6. Al terminar, el anfitrión toca **Revancha** y todos vuelven al lobby con las mismas reglas.
+7. ¿Dudas? Botón **📖 Reglas** (en el lobby y durante la partida).
+
+Tocá cualquier casilla del tablero para ver su título de propiedad completo (precios, alquileres, dueño).
+
+---
+
+## Requisitos
+
+- **Node.js 20 o superior** y **pnpm** (`npm i -g pnpm` o `corepack enable`).
+- Para desplegar en la nube: una cuenta gratuita en [Fly.io](https://fly.io) (o Render/Railway) y Docker **no** es necesario en tu máquina (Fly compila remoto).
+
+## Instalación y ejecución local
+
+```bash
+pnpm install          # instala dependencias de los 3 paquetes
+pnpm test             # 56 tests del motor de reglas (incluye partidas completas simuladas)
+pnpm build            # compila cliente (apps/web/dist) y servidor (apps/server/dist)
+pnpm start            # http://localhost:8080
+```
+
+Modo desarrollo con recarga automática (servidor en 8080, cliente en 5173 con proxy):
+
+```bash
+pnpm dev
+```
+
+---
+
+## Opción A — Jugar desde la nube (recomendada)
+
+Link fijo, funciona con tu PC apagada, HTTPS automático. Fly.io en São Paulo (`gru`) da ~40 ms de latencia desde Paraguay y se apaga solo cuando nadie juega, así que el costo es US$ 0-5/mes.
+
+```bash
+# 1. Instalar la CLI de Fly (https://fly.io/docs/flyctl/install/) e iniciar sesión
+fly auth signup      # o fly auth login
+
+# 2. Crear la app usando el fly.toml del repo (elegí un nombre libre si "nandepoly" está tomado)
+fly launch --copy-config --no-deploy --name nandepoly-<tu-nombre>
+
+# 3. Volumen de 1 GB para que las partidas sobrevivan reinicios
+fly volumes create nandepoly_data --region gru --size 1
+
+# 4. Desplegar
+fly deploy
+
+# 5. Abrir
+fly open        # → https://nandepoly-<tu-nombre>.fly.dev
+```
+
+Para actualizar después de cambiar algo: `fly deploy`. Para ver logs: `fly logs`.
+
+**Alternativas equivalentes:** [Render](https://render.com) (usa `render.yaml`: *New → Blueprint*), [Railway](https://railway.app) (detecta el `Dockerfile` solo). En cualquier VPS con Docker: `docker compose up -d` y listo en el puerto 8080.
+
+**Dominio propio (opcional):** `fly certs add nandepoly.tudominio.com` y un registro CNAME hacia `<app>.fly.dev`.
+
+## Opción B — Jugar desde tu PC
+
+```bash
+pnpm install && pnpm build
+pnpm start          # servidor en http://localhost:8080
+```
+
+- **Misma casa (LAN):** tus amigos entran a `http://<IP-de-tu-PC>:8080` (ej. `http://192.168.0.15:8080`). Averiguá tu IP con `ipconfig` (Windows) o `ip a` (Linux/Mac).
+- **Por internet, sin tocar el router:**
+  - **ngrok** (más simple para invitados ocasionales): `ngrok http 8080` y compartís el link `https://xxxx.ngrok-free.app`. Cambia cada vez que lo reiniciás (plan gratis).
+  - **Cloudflare Tunnel** (gratis, link temporal): `cloudflared tunnel --url http://localhost:8080`.
+  - **Tailscale** (privado, ideal para un grupo fijo): todos instalan Tailscale, se unen a tu red y entran a `http://<tu-ip-tailscale>:8080`.
+
+Las partidas se guardan en `./data/rooms.json` si definís `DATA_DIR=./data`, así podés reiniciar el servidor sin perderlas:
+
+```bash
+DATA_DIR=./data pnpm start
+```
+
+Desventaja: si apagás la PC o se cae tu internet, la partida se corta hasta que vuelvas.
+
+---
+
+## Variables de entorno
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `PORT` | `8080` | Puerto HTTP/WebSocket. |
+| `HOST` | `0.0.0.0` | Interfaz de escucha. |
+| `DATA_DIR` | *(vacío = solo memoria)* | Carpeta para persistir salas en `rooms.json`. |
+| `ROOM_TTL_HOURS` | `6` | Horas sin nadie conectado tras las cuales se borra una sala. |
+| `AUCTION_SECONDS` | `20` | Segundos de inactividad para cerrar una subasta. |
+| `BOT_DELAY_MS` | `900` | Pausa entre acciones de los bots (para que se vean). |
+| `PUBLIC_DIR` | *(auto)* | Ruta al cliente compilado si no está en `apps/web/dist`. |
+| `LOG_LEVEL` | `info` | Nivel de log de Fastify/pino. |
+
+---
+
+## Estructura del proyecto
+
+```
+nandepoly/
+├── packages/engine/        Motor de reglas (TypeScript puro, sin dependencias)
+│   ├── src/board.ts        Las 40 casillas paraguayas con precios y alquileres
+│   ├── src/cards.ts        16 cartas Suerte + 16 Cooperativa
+│   ├── src/reducer.ts      Todas las reglas: applyAction(estado, acción) → nuevo estado
+│   ├── src/selectors.ts    Cálculos: alquiler, patrimonio, ¿puede construir?, etc.
+│   └── test/               Tests (Vitest)
+├── apps/server/            Fastify + Socket.IO: salas, validación (Zod), bots, temporizadores
+├── apps/web/               React + Vite + Tailwind: tablero 2D, paneles, diálogos
+├── e2e/                    Pruebas end-to-end (6 navegadores con Playwright; humano + bots)
+├── Dockerfile · fly.toml · render.yaml · docker-compose.yml
+└── docs/                   Especificación técnica
+```
+
+**Cómo funciona online:** los navegadores solo envían *intenciones* (`ROLL`, `BUY`, `BID`…). El servidor valida quién es y si es su turno, tira los dados con su propio generador, aplica el motor de reglas y reenvía el estado completo a toda la sala. Los mazos y la semilla de los dados nunca salen del servidor.
+
+---
+
+## Personalizar
+
+- **Nombres de casillas y precios:** `packages/engine/src/board.ts`. Cambiá cualquier ciudad o avenida; los tests verifican que la estructura siga siendo válida.
+- **Textos de las cartas:** `packages/engine/src/cards.ts` (los efectos están separados del texto).
+- **Fichas y colores:** `TOKENS`, `PLAYER_COLORS` y `GROUP_COLORS` en `board.ts`.
+- **Estilo visual:** `apps/web/src/index.css` y `tailwind.config.js`.
+
+Después de cambiar algo: `pnpm test && pnpm build` y volver a desplegar.
+
+## Reglas caseras disponibles (las define el anfitrión en el lobby)
+
+Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial.
+
+## Pruebas
+
+```bash
+pnpm test                      # motor: 48 tests, incluye partidas completas con 2 y 6 jugadores
+pnpm build && pnpm start &     # levantar servidor
+pnpm e2e:bots                  # humano (script) + 5 bots juegan una partida entera por Socket.IO
+pnpm e2e                       # 6 navegadores reales juegan y uno se reconecta (requiere Chromium de Playwright)
+node e2e/features.mjs          # reemplazo por bot, sacar jugador, abandonar, fin de partida y revancha
+```
+
+## Problemas frecuentes
+
+- **"Sala no encontrada"**: el código expiró (`ROOM_TTL_HOURS`) o el servidor se reinició sin `DATA_DIR`.
+- **No puedo volver a mi jugador**: la sesión se guarda en el navegador que usaste; entrá desde el mismo dispositivo/navegador o pedile al anfitrión que te agregue de nuevo si la partida está en el lobby.
+- **Los bots no se mueven**: revisá `fly logs`; el servidor fuerza el fin de turno si un bot falla.
+- **El tablero se ve chico en el celular**: tocá una casilla para ver el detalle; girá el teléfono para ver más grande.
