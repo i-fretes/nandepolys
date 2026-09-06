@@ -111,6 +111,24 @@ export default function Lobby() {
                 <option value={0}>Sin límite</option><option value={60}>60 s</option><option value={120}>120 s</option><option value={180}>180 s</option>
               </select>
             </Row>
+            <div className="my-2 border-t border-black/10 pt-2 text-xs font-bold uppercase tracking-wide text-ink/50">🎰 Timba (opcional)</div>
+            <Toggle label="Casinos (dos casillas 🎰 a los lados del tablero: ruleta 49/51, quiniela, doble o nada, carrera de carretas)" checked={s.casino} disabled={!isHost} onChange={v => setSetting('casino', v)} />
+            {s.casino && (
+              <Row label="Apuesta máxima en el Casino">
+                <select className="input !w-auto !py-1" disabled={!isHost} value={s.casinoMaxBet} onChange={e => setSetting('casinoMaxBet', Number(e.target.value))}>
+                  {[200, 500, 1000, 2000].map(v => <option key={v} value={v}>{money(v)}</option>)}
+                </select>
+              </Row>
+            )}
+            <Toggle label="Jackpot: lo perdido en el Casino se acumula y el doble seis se lo lleva" checked={s.jackpot} disabled={!isHost} onChange={v => setSetting('jackpot', v)} />
+            <Toggle label="Alquiler a doble o nada (7+ no pagás, 6- pagás doble; el dueño decide)" checked={s.rentDoubleOrNothing} disabled={!isHost} onChange={v => setSetting('rentDoubleOrNothing', v)} />
+            <Toggle label="Desafíos entre jugadores (dados, piedra-papel-tijera, trivia, tereré) + cartas ¡Desafío!" checked={s.challenges} disabled={!isHost} onChange={v => setSetting('challenges', v)} />
+            <Toggle label="Duelo mayor: cada 3 vueltas ganás una ficha para retar a alguien por hasta ₲ 500.000 a Escopeta o Truco (negarse cuesta ₲ 50.000)" checked={s.duels} disabled={!isHost} onChange={v => setSetting('duels', v)} />
+            <div className="my-2 border-t border-black/10 pt-2 text-xs font-bold uppercase tracking-wide text-ink/50">🏟️ Fiesta (opcional)</div>
+            <Toggle label="La Arena (dos casillas 🏟️ arriba y abajo): al caer, TODOS juegan un mini-juego votado entre 3; el banco paga 300/150/50 mil y el más pobre dobla" checked={s.arena} disabled={!isHost} onChange={v => setSetting('arena', v)} />
+            <Toggle label="Caja sorpresa al pasar por Salida (en vez de ₲ 200.000 fijos: carrete con premios, promedio ≈ 200.000)" checked={s.lootbox} disabled={!isHost} onChange={v => setSetting('lootbox', v)} />
+            <Toggle label="Misiones secretas: 3 objetivos ocultos por jugador que pagan solos al cumplirse" checked={s.missions} disabled={!isHost} onChange={v => setSetting('missions', v)} />
+            <Toggle label="Eventos globales: cada vuelta completa de la mesa gira una ruleta (2 de cada 3 veces: tranquilidad)" checked={s.events} disabled={!isHost} onChange={v => setSetting('events', v)} />
             <Row label="Duración máxima">
               <select className="input !w-auto !py-1" disabled={!isHost} value={s.timeLimitMinutes} onChange={e => setSetting('timeLimitMinutes', Number(e.target.value))}>
                 <option value={0}>Sin límite</option><option value={60}>60 min</option><option value={90}>90 min</option><option value={120}>120 min</option>

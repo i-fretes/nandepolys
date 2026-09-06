@@ -21,8 +21,8 @@ describe('movimiento y Salida', () => {
   it('cobra ₲ 200.000 al pasar por Salida', () => {
     let s = makeGame(2);
     const me = cur(s).id;
-    s = setPos(s, me, 38);
-    s = withDice(s, [2, 3]); // 38 + 5 = 43 → 3
+    s = setPos(s, me, 42);
+    s = withDice(s, [2, 3]); // 42 + 5 = 47 → 3
     const r = act(s, { type: 'ROLL', playerId: me });
     const p = r.state.players.find(p => p.id === me)!;
     expect(p.position).toBe(3);
@@ -33,7 +33,7 @@ describe('movimiento y Salida', () => {
   it('paga doble sueldo al caer exacto en Salida si la regla casera está activa', () => {
     let s = makeGame(2, { doubleGoSalary: true });
     const me = cur(s).id;
-    s = setPos(s, me, 35);
+    s = setPos(s, me, 39);
     s = withDice(s, [2, 3]);
     const r = act(s, { type: 'ROLL', playerId: me });
     expect(r.state.players.find(p => p.id === me)!.cash).toBe(1900);
@@ -132,24 +132,24 @@ describe('alquileres', () => {
     const b = s.players[1].id;
     s = give(s, b, [5]);
     expect(rentFor(s, 5, 7)).toBe(25);
-    s = give(s, b, [5, 15]);
+    s = give(s, b, [5, 16]);
     expect(rentFor(s, 5, 7)).toBe(50);
-    s = give(s, b, [5, 15, 25]);
+    s = give(s, b, [5, 16, 27]);
     expect(rentFor(s, 5, 7)).toBe(100);
-    s = give(s, b, [5, 15, 25, 35]);
+    s = give(s, b, [5, 16, 27, 38]);
     expect(rentFor(s, 5, 7)).toBe(200);
-    s = give(s, b, [12]);
-    expect(rentFor(s, 12, 7)).toBe(28);
-    s = give(s, b, [12, 28]);
-    expect(rentFor(s, 12, 7)).toBe(70);
+    s = give(s, b, [13]);
+    expect(rentFor(s, 13, 7)).toBe(28);
+    s = give(s, b, [13, 31]);
+    expect(rentFor(s, 13, 7)).toBe(70);
   });
 
   it('caer en propiedad ajena transfiere el alquiler', () => {
     let s = makeGame(2);
     const [a, b] = s.players.map(p => p.id);
-    s = give(s, b, [6, 8, 9]); // celeste completo → doble
+    s = give(s, b, [7, 9, 10]); // celeste completo → doble
     s = setPos(s, a, 0);
-    s = withDice(s, [2, 4]); // → 6 Caacupé
+    s = withDice(s, [3, 4]); // → 7 Caacupé
     const r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players.find(p => p.id === a)!.cash).toBe(1500 - 12);
     expect(r.state.players.find(p => p.id === b)!.cash).toBe(1500 + 12);
@@ -200,11 +200,11 @@ describe('hipotecas', () => {
   it('hipoteca al 50 % y deshipoteca al 110 %', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s = give(s, a, [39]); // 400
-    let r = act(s, { type: 'MORTGAGE', playerId: a, tileId: 39 });
-    expect(r.state.properties[39].mortgaged).toBe(true);
+    s = give(s, a, [43]); // 400
+    let r = act(s, { type: 'MORTGAGE', playerId: a, tileId: 43 });
+    expect(r.state.properties[43].mortgaged).toBe(true);
     expect(r.state.players.find(p => p.id === a)!.cash).toBe(1700);
-    r = act(r.state, { type: 'UNMORTGAGE', playerId: a, tileId: 39 });
+    r = act(r.state, { type: 'UNMORTGAGE', playerId: a, tileId: 43 });
     expect(r.state.players.find(p => p.id === a)!.cash).toBe(1700 - 220);
   });
 
@@ -224,27 +224,27 @@ describe('cárcel', () => {
     let r = act(s, { type: 'ROLL', playerId: a }); // → 2 Cooperativa (carta)
     // La carta puede cambiar la fase; forzamos posición neutra y repetimos
     if (r.state.turnPhase !== 'AWAITING_ROLL') return; // carta con efecto que cierra el turno: caso cubierto en otros tests
-    let st = setPos(r.state, a, 10);
+    let st = setPos(r.state, a, 11);
     st = { ...st, seed: seedFor([2, 2]) };
-    r = act(st, { type: 'ROLL', playerId: a }); // → 14 Pilar → AWAITING_BUY
+    r = act(st, { type: 'ROLL', playerId: a }); // → 15 Pilar → AWAITING_BUY
     r = act(r.state, { type: 'DECLINE', playerId: a });
     r = act(r.state, { type: 'AUCTION_PASS', playerId: a });
     r = act(r.state, { type: 'AUCTION_PASS', playerId: s.players[1].id });
     expect(r.state.turnPhase).toBe('AWAITING_ROLL');
     expect(r.state.doublesCount).toBe(2);
-    st = setPos(r.state, a, 20);
+    st = setPos(r.state, a, 22);
     st = { ...st, seed: seedFor([3, 3]) };
     r = act(st, { type: 'ROLL', playerId: a });
     const p = r.state.players.find(p => p.id === a)!;
     expect(p.inJail).toBe(true);
-    expect(p.position).toBe(10);
+    expect(p.position).toBe(11);
     expect(r.state.turnPhase).toBe('END_TURN');
   });
 
   it('caer en "Vaya a Tacumbú" no cobra sueldo y termina el turno', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s = setPos(s, a, 25);
+    s = setPos(s, a, 28);
     s = withDice(s, [2, 3]);
     const r = act(s, { type: 'ROLL', playerId: a });
     const p = r.state.players.find(p => p.id === a)!;
@@ -256,7 +256,7 @@ describe('cárcel', () => {
   it('paga ₲ 50.000 para salir; sale con dobles sin volver a tirar; tercer turno paga y sale', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s.players[0].inJail = true; s.players[0].position = 10;
+    s.players[0].inJail = true; s.players[0].position = 11;
     let r = act(s, { type: 'JAIL_PAY', playerId: a });
     expect(r.state.players[0].inJail).toBe(false);
     expect(r.state.players[0].cash).toBe(1450);
@@ -265,9 +265,9 @@ describe('cárcel', () => {
     // dobles estando preso
     let st = structuredClone(s);
     st.seed = seedFor([2, 2]);
-    r = act(st, { type: 'ROLL', playerId: a }); // 10 + 4 = 14 Pilar
+    r = act(st, { type: 'ROLL', playerId: a }); // 11 + 4 = 15 Pilar
     expect(r.state.players[0].inJail).toBe(false);
-    expect(r.state.players[0].position).toBe(14);
+    expect(r.state.players[0].position).toBe(15);
     expect(r.state.turnPhase).toBe('AWAITING_BUY');
     r = act(r.state, { type: 'BUY', playerId: a });
     expect(r.state.turnPhase).toBe('END_TURN'); // no repite tirada
@@ -279,13 +279,13 @@ describe('cárcel', () => {
     r = act(st, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].inJail).toBe(false);
     expect(r.state.players[0].cash).toBe(1450);
-    expect(r.state.players[0].position).toBe(13);
+    expect(r.state.players[0].position).toBe(14);
   });
 
   it('sin dobles sigue preso y termina el turno', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s.players[0].inJail = true; s.players[0].position = 10;
+    s.players[0].inJail = true; s.players[0].position = 11;
     s.seed = seedFor([1, 2]);
     const r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].inJail).toBe(true);
@@ -296,7 +296,7 @@ describe('cárcel', () => {
   it('usa carta para salir y la carta vuelve al mazo', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s.players[0].inJail = true; s.players[0].position = 10; s.players[0].jailCards = ['chance'];
+    s.players[0].inJail = true; s.players[0].position = 11; s.players[0].jailCards = ['chance'];
     s.decks.chance = s.decks.chance.filter(c => c !== 'S8');
     const r = act(s, { type: 'JAIL_CARD', playerId: a });
     expect(r.state.players[0].inJail).toBe(false);
@@ -312,30 +312,29 @@ describe('cartas', () => {
     return c;
   }
 
-  it('retrocedé 3 desde Suerte (36) cae en Cooperativa (33) y saca otra carta', () => {
+  it('retrocedé 3 desde Suerte (40) cae en Mburucuyá (37) y puede comprarla', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s = setPos(s, a, 33);
+    s = setPos(s, a, 37);
     s = withTopCard(s, 'chance', 'S9');
-    s = withTopCard(s, 'community', 'C2');
-    s = withDice(s, [1, 2]); // → 36
+    s = withDice(s, [1, 2]); // → 40
     const r = act(s, { type: 'ROLL', playerId: a });
-    expect(r.state.players[0].position).toBe(33);
-    expect(r.state.players[0].cash).toBe(1700);
-    expect(r.state.lastCard?.card.id).toBe('C2');
+    expect(r.state.players[0].position).toBe(37);
+    expect(r.state.turnPhase).toBe('AWAITING_BUY');
+    expect(r.state.lastCard?.card.id).toBe('S9');
   });
 
   it('carta de avanzar a Salida cobra 200; ir a Tacumbú no cobra', () => {
     let s = makeGame(2);
     const a = cur(s).id;
-    s = setPos(s, a, 4);
+    s = setPos(s, a, 5);
     s = withTopCard(s, 'chance', 'S1');
-    s = withDice(s, [1, 2]); // → 7 Suerte
+    s = withDice(s, [1, 2]); // → 8 Suerte
     let r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].position).toBe(0);
     expect(r.state.players[0].cash).toBe(1700);
 
-    s = setPos(s, a, 4);
+    s = setPos(s, a, 5);
     s = withTopCard(s, 'chance', 'S10');
     r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].inJail).toBe(true);
@@ -346,13 +345,13 @@ describe('cartas', () => {
     let s = makeGame(3);
     const a = cur(s).id;
     s = give(s, a, [1, 3], 2); // 4 casas
-    s = setPos(s, a, 4);
+    s = setPos(s, a, 5);
     s = withTopCard(s, 'chance', 'S11');
     s = withDice(s, [1, 2]);
     let r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].cash).toBe(1500 - 100);
 
-    s = setPos(s, a, 4);
+    s = setPos(s, a, 5);
     s = withTopCard(s, 'chance', 'S15');
     r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].cash).toBe(1400);
@@ -381,19 +380,19 @@ describe('cartas', () => {
   it('avanzar al transporte más cercano paga doble; al servicio paga 10x dados', () => {
     let s = makeGame(2);
     const [a, b] = s.players.map(p => p.id);
-    s = give(s, b, [15]);
-    s = setPos(s, a, 4);
+    s = give(s, b, [16]);
+    s = setPos(s, a, 5);
     s = withTopCard(s, 'chance', 'S5');
-    s = withDice(s, [1, 2]); // → 7 → transporte más cercano 15
+    s = withDice(s, [1, 2]); // → 8 → transporte más cercano 16
     let r = act(s, { type: 'ROLL', playerId: a });
-    expect(r.state.players[0].position).toBe(15);
+    expect(r.state.players[0].position).toBe(16);
     expect(r.state.players[0].cash).toBe(1450);
 
-    s = give(s, b, [12]);
-    s = setPos(s, a, 4);
+    s = give(s, b, [13]);
+    s = setPos(s, a, 5);
     s = withTopCard(s, 'chance', 'S4');
     r = act(s, { type: 'ROLL', playerId: a });
-    expect(r.state.players[0].position).toBe(12);
+    expect(r.state.players[0].position).toBe(13);
     const d = r.state.dice!;
     expect(r.state.players[0].cash).toBe(1500 - (d[0] + d[1]) * 10);
   });
@@ -416,15 +415,15 @@ describe('impuestos', () => {
   it('impuesto al lujo cobra 100 y con pozo activo va al Estacionamiento Libre', () => {
     let s = makeGame(2, { freeParkingPot: true });
     const a = cur(s).id;
-    s = setPos(s, a, 35);
-    s = withDice(s, [1, 2]); // → 38
+    s = setPos(s, a, 39);
+    s = withDice(s, [1, 2]); // → 42
     let r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].cash).toBe(1400);
     expect(r.state.freeParkingPot).toBe(100);
     r = act(r.state, { type: 'END_TURN', playerId: a });
     const b = cur(r.state).id;
-    let st = setPos(r.state, b, 15);
-    st = { ...st, seed: seedFor([2, 3]) }; // → 20
+    let st = setPos(r.state, b, 17);
+    st = { ...st, seed: seedFor([2, 3]) }; // → 22
     r = act(st, { type: 'ROLL', playerId: b });
     expect(r.state.players.find(p => p.id === b)!.cash).toBe(1600);
     expect(r.state.freeParkingPot).toBe(0);
@@ -436,7 +435,7 @@ describe('deuda y quiebra', () => {
     let s = makeGame(2);
     const [a, b] = s.players.map(p => p.id);
     s = give(s, b, [1, 3], 5); // hotel en Mariano: 450
-    s = give(s, a, [21, 23, 24, 39]); // hipotecas: 110+110+120+200 = 540
+    s = give(s, a, [23, 25, 26, 43]); // hipotecas: 110+110+120+200 = 540
     s = setCash(s, a, 100); // liquidación 640 ≥ 450 → DEBT
     s = setPos(s, a, 0);
     s = withDice(s, [1, 2]); // → 3
@@ -444,11 +443,11 @@ describe('deuda y quiebra', () => {
     expect(r.state.turnPhase).toBe('DEBT');
     expect(r.state.debt?.amount).toBe(450);
     expect(r.state.players[0].bankrupt).toBe(false);
-    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 39 }); // 300
+    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 43 }); // 300
     expect(r.state.turnPhase).toBe('DEBT');
-    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 21 }); // 410
+    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 23 }); // 410
     expect(r.state.turnPhase).toBe('DEBT');
-    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 24 }); // 530 → paga
+    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 26 }); // 530 → paga
     expect(r.state.turnPhase).toBe('END_TURN');
     expect(r.state.players.find(p => p.id === a)!.cash).toBe(530 - 450);
     expect(r.state.players.find(p => p.id === b)!.cash).toBe(1950);
@@ -457,17 +456,17 @@ describe('deuda y quiebra', () => {
   it('quiebra directa si ni liquidando alcanza: el acreedor recibe todo', () => {
     let s = makeGame(2);
     const [a, b] = s.players.map(p => p.id);
-    s = give(s, b, [37, 39], 5);
-    s = give(s, a, [21, 23, 24]);
+    s = give(s, b, [41, 43], 5);
+    s = give(s, a, [23, 25, 26]);
     s = setCash(s, a, 100);
-    s = setPos(s, a, 36);
-    s = withDice(s, [1, 2]); // → 39 hotel: 2000; liquidación 440 → quiebra
+    s = setPos(s, a, 40);
+    s = withDice(s, [1, 2]); // → 43 hotel: 2000; liquidación 440 → quiebra
     const r = act(s, { type: 'ROLL', playerId: a });
     const pa = r.state.players.find(p => p.id === a)!;
     expect(pa.bankrupt).toBe(true);
     expect(r.state.phase).toBe('FINISHED');
     expect(r.state.winnerId).toBe(b);
-    expect(r.state.properties[21].owner).toBe(b);
+    expect(r.state.properties[23].owner).toBe(b);
     expect(r.state.players.find(p => p.id === b)!.cash).toBe(1600);
   });
 
@@ -475,7 +474,7 @@ describe('deuda y quiebra', () => {
     let s = makeGame(3);
     const [a, b] = s.players.map(p => p.id);
     s = give(s, b, [1, 3], 3); // Mariano con 3 casas: 180
-    s = give(s, a, [39, 37]); // 175 + 200 de hipoteca
+    s = give(s, a, [43, 41]); // 175 + 200 de hipoteca
     s = setCash(s, a, 50);
     s = setPos(s, a, 0);
     s = withDice(s, [1, 2]); // → 3
@@ -483,7 +482,7 @@ describe('deuda y quiebra', () => {
     expect(r.state.turnPhase).toBe('DEBT');
     expect(legalActions(r.state, a).has('MORTGAGE')).toBe(true);
     expect(() => act(r.state, { type: 'END_TURN', playerId: a })).toThrow();
-    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 39 });
+    r = act(r.state, { type: 'MORTGAGE', playerId: a, tileId: 43 });
     expect(r.state.turnPhase).toBe('END_TURN');
     expect(r.state.players.find(p => p.id === a)!.cash).toBe(50 + 200 - 180);
     expect(r.state.players.find(p => p.id === b)!.cash).toBe(1680);
@@ -494,8 +493,8 @@ describe('deuda y quiebra', () => {
     const [a, b, c] = s.players.map(p => p.id);
     s = give(s, a, [1]);
     s = setCash(s, a, 0);
-    s = setPos(s, a, 35);
-    s = withDice(s, [1, 2]); // → 38 lujo 100; liquidación 30 < 100 → quiebra con banco
+    s = setPos(s, a, 39);
+    s = withDice(s, [1, 2]); // → 42 lujo 100; liquidación 30 < 100 → quiebra con banco
     let r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players.find(p => p.id === a)!.bankrupt).toBe(true);
     expect(r.state.turnPhase).toBe('AUCTION');

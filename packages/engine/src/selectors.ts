@@ -35,8 +35,8 @@ export function countUtilities(state: GameState, playerId: string): number {
   return BOARD.filter(t => t.type === 'utility' && state.properties[t.id]?.owner === playerId).length;
 }
 
-/** Alquiler que debe pagarse al caer en tileId (sin multiplicadores de cartas). */
-export function rentFor(state: GameState, tileId: number, diceSum: number): number {
+/** Alquiler base (sin eventos globales ni multiplicadores de cartas). */
+export function baseRentFor(state: GameState, tileId: number, diceSum: number): number {
   const t = tile(tileId);
   const ps = state.properties[tileId];
   if (!isProperty(t) || !ps?.owner || ps.mortgaged) return 0;
@@ -50,6 +50,24 @@ export function rentFor(state: GameState, tileId: number, diceSum: number): numb
   }
   const n = countUtilities(state, ps.owner);
   return diceSum * (n >= 2 ? 10 : 4);
+}
+
+/** Alquiler que debe pagarse al caer en tileId, aplicando el evento global activo. */
+export function rentFor(state: GameState, tileId: number, diceSum: number): number {
+  const base = baseRentFor(state, tileId, diceSum);
+  if (base <= 0) return 0;
+  const ev = state.activeEvent?.id;
+  if (!ev) return base;
+  const t = tile(tileId);
+  const ps = state.properties[tileId];
+  switch (ev) {
+    case 'hora_feliz': return base * 2;
+    case 'inflacion': return Math.floor(base * 1.5);
+    case 'paro_ande': return t.type === 'utility' || t.type === 'transport' ? 0 : base;
+    case 'sequia': return t.type === 'street' && ps.houses === 0 ? 0 : base;
+    case 'corte_ruta': return t.type === 'transport' ? base * 3 : base;
+    default: return base;
+  }
 }
 
 /** Patrimonio: efectivo + propiedades (hipotecadas a la mitad) + edificios al costo. */
@@ -157,9 +175,40 @@ export function ranking(state: GameState): { playerId: string; netWorth: number 
 }
 
 /** Estado visible para los clientes: sin el orden de los mazos ni la semilla del RNG. */
-export type ClientState = Omit<GameState, 'decks' | 'seed'> & { deckCounts: Record<'chance' | 'community', number> };
+export type ClientState = Omit<GameState, 'decks' | 'seed'> & {
+  deckCounts: Record<'chance' | 'community', number>;
+  /** Datos privados del jugador que mira (mano de truco, etc.) */
+  mine: { trucoHand: { r: number; s: string }[] | null; drawWord: string | null } | null;
+};
 
-export function toClientState(s: GameState): ClientState {
+/**
+ * Estado para un cliente concreto. Oculta secretos (mazos, semilla, respuestas) y
+ * las misiones de los demás jugadores; expone la mano de truco propia y la lupa propia.
+ */
+export function toClientState(s: GameState, viewerId?: string): ClientState {
   const { decks, seed: _seed, ...rest } = s;
-  return { ...rest, deckCounts: { chance: decks.chance.length, community: decks.community.length } };
+  const challenge = rest.challenge ? { ...rest.challenge, secret: {} } : null;
+  const arena = rest.arena ? { ...rest.arena, secret: {} } : null;
+  let mine: ClientState['mine'] = viewerId ? { trucoHand: null, drawWord: null } : null;
+  if (mine && rest.arena?.game === 'dibujo' && rest.arena.data.drawer === viewerId) mine.drawWord = String(rest.arena.secret.word ?? '');
+  let duel = rest.duel;
+  if (duel) {
+    const data = { ...duel.data };
+    if (duel.game === 'escopeta' && data.peek) {
+      const peek = data.peek as Record<string, string>;
+      data.peek = viewerId && peek[viewerId] ? { [viewerId]: peek[viewerId] } : {};
+    }
+    if (duel.game === 'truco' && viewerId) {
+      const sec = duel.secret.truco as { hands?: Record<string, { r: number; s: string }[]> } | undefined;
+      mine = { ...mine!, trucoHand: sec?.hands?.[viewerId] ?? null };
+    }
+    duel = { ...duel, data, secret: {} };
+  }
+  const players = rest.players.map(p => (viewerId && p.id === viewerId)
+    ? p
+    : { ...p, missions: p.missions.map(m => ({ ...m, text: m.done ? m.text : '???', id: m.done ? m.id : 'hidden' })) });
+  return {
+    ...rest, players, challenge, arena, duel, mine,
+    deckCounts: { chance: decks.chance.length, community: decks.community.length },
+  };
 }

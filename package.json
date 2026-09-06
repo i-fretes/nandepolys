@@ -1,7 +1,7 @@
 {
   "name": "nandepoly",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "Juego de compra-venta de propiedades ambientado en Paraguay, online hasta 6 jugadores.",
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"pnpm --filter @nandepoly/server dev\" \"pnpm --filter @nandepoly/web dev\"",

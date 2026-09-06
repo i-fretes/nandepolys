@@ -32,6 +32,9 @@ importers:
       '@nandepoly/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      an-array-of-spanish-words:
+        specifier: 2.0.0
+        version: 2.0.0
       fastify:
         specifier: ^5.1.0
         version: 5.12.3
@@ -63,6 +66,9 @@ importers:
       '@nandepoly/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      canvas-confetti:
+        specifier: 1.9.3
+        version: 1.9.3
       framer-motion:
         specifier: ^11.11.11
         version: 11.18.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -85,6 +91,9 @@ importers:
         specifier: ^5.0.1
         version: 5.0.15(@types/react@18.3.31)(react@18.3.1)
     devDependencies:
+      '@types/canvas-confetti':
+        specifier: 1.6.4
+        version: 1.6.4
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
@@ -874,6 +883,9 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
+  '@types/canvas-confetti@1.6.4':
+    resolution: {integrity: sha512-fNyZ/Fdw/Y92X0vv7B+BD6ysHL4xVU5dJcgzgxLdGbn8O3PezZNIJpml44lKM0nsGur+o/6+NZbZeNTt00U1uA==}
+
   '@types/cors@2.8.19':
     resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
 
@@ -949,6 +961,10 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  an-array-of-spanish-words@2.0.0:
+    resolution: {integrity: sha512-mzTXYjlzlT6RhQWeBpXgz0mtUkR1qNra6Zx68BRsMY5uejokblFW3d0asckbds5uacO/otrFPka2dWCr65gzmg==}
+    hasBin: true
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -1026,6 +1042,9 @@ packages:
 
   caniuse-lite@1.0.30001810:
     resolution: {integrity: sha512-TITQPUkaz+aVk5GL6NhOdwk1aEaNTSDPsGFWrTuhKGtjTF70jL/Oht2W4c6rXUe5fu7Ie19VIahAXHIIiWWNeg==}
+
+  canvas-confetti@1.9.3:
+    resolution: {integrity: sha512-rFfTURMvmVEX1gyXFgn5QMn81bYk70qa0HLzcIOSVEyl57n6o9ItHeBtUSWdvKAPY0xlvBHno4/v3QPrT83q9g==}
 
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
@@ -2529,6 +2548,8 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.8
 
+  '@types/canvas-confetti@1.6.4': {}
+
   '@types/cors@2.8.19':
     dependencies:
       '@types/node': 22.20.1
@@ -2624,6 +2645,8 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
+  an-array-of-spanish-words@2.0.0: {}
+
   ansi-regex@5.0.1: {}
 
   ansi-styles@4.3.0:
@@ -2686,6 +2709,8 @@ snapshots:
   camelcase-css@2.0.1: {}
 
   caniuse-lite@1.0.30001810: {}
+
+  canvas-confetti@1.9.3: {}
 
   chai@5.3.3:
     dependencies:

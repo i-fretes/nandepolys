@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BOARD, CHANCE_CARDS, COMMUNITY_CARDS, GROUP_NAMES, groupTiles, isProperty, type Group } from '../src';
 
 describe('tablero', () => {
-  it('tiene 40 casillas con ids consecutivos', () => {
-    expect(BOARD).toHaveLength(40);
+  it('tiene 44 casillas con ids consecutivos', () => {
+    expect(BOARD).toHaveLength(44);
     BOARD.forEach((t, i) => expect(t.id).toBe(i));
   });
 
@@ -23,12 +23,14 @@ describe('tablero', () => {
 
   it('casillas especiales en su lugar', () => {
     expect(BOARD[0].type).toBe('go');
-    expect(BOARD[10].type).toBe('jail');
-    expect(BOARD[20].type).toBe('parking');
-    expect(BOARD[30].type).toBe('gotojail');
-    expect(BOARD.filter(t => t.type === 'chance').map(t => t.id)).toEqual([7, 22, 36]);
-    expect(BOARD.filter(t => t.type === 'community').map(t => t.id)).toEqual([2, 17, 33]);
-    expect(BOARD.filter(t => t.type === 'tax').map(t => t.id)).toEqual([4, 38]);
+    expect(BOARD[11].type).toBe('jail');
+    expect(BOARD[22].type).toBe('parking');
+    expect(BOARD[33].type).toBe('gotojail');
+    expect(BOARD.filter(t => t.type === 'chance').map(t => t.id)).toEqual([8, 24, 40]);
+    expect(BOARD.filter(t => t.type === 'community').map(t => t.id)).toEqual([2, 19, 36]);
+    expect(BOARD.filter(t => t.type === 'tax').map(t => t.id)).toEqual([4, 42]);
+    expect(BOARD.filter(t => t.type === 'casino').map(t => t.id)).toEqual([17, 39]);
+    expect(BOARD.filter(t => t.type === 'arena').map(t => t.id)).toEqual([6, 28]);
   });
 
   it('alquileres crecientes y hipoteca = mitad del precio', () => {

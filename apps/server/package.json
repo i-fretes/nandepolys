@@ -1,6 +1,6 @@
 {
   "name": "@nandepoly/server",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -11,6 +11,7 @@
     "@fastify/cors": "^10.0.1",
     "@fastify/static": "^8.0.2",
     "@nandepoly/engine": "workspace:*",
+    "an-array-of-spanish-words": "2.0.0",
     "fastify": "^5.1.0",
     "nanoid": "^5.0.8",
     "socket.io": "^4.8.1",

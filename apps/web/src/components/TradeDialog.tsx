@@ -17,8 +17,14 @@ export default function TradeDialog() {
   const [give, setGive] = useState<TradeSide>(empty());
   const [receive, setReceive] = useState<TradeSide>(empty());
 
+  const sendDrafting = useStore(s => s.sendDrafting);
   const others = state.players.filter(p => !p.bankrupt && p.id !== me?.id);
   useEffect(() => { if (open) { setToId(others[0]?.id ?? ''); setGive(empty()); setReceive(empty()); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Avisar a la mesa con quién estoy negociando (fila fantasma en la tabla en vivo)
+  useEffect(() => {
+    if (open && toId) sendDrafting(toId);
+    return () => { if (open) sendDrafting(null); };
+  }, [open, toId, sendDrafting]);
 
   const pending = state.pendingTrade;
 

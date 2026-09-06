@@ -1,12 +1,14 @@
 import { BOARD, GROUP_COLORS, isProperty, netWorth, type GameState } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { money, tokenEmoji } from '../format';
+import AnimatedNumber from './AnimatedNumber';
 
 export default function PlayerPanel() {
   const state = useStore(s => s.state)!;
   const me = useStore(s => s.playerId);
   const setSelected = useStore(s => s.setSelectedTile);
   const act = useStore(s => s.act);
+  const streak = useStore(s => s.streak);
   const current = state.players[state.currentPlayerIndex];
   const isHost = state.hostId === me;
 
@@ -16,7 +18,7 @@ export default function PlayerPanel() {
         const props = BOARD.filter(isProperty).filter(t => state.properties[t.id].owner === p.id);
         const isCurrent = state.phase === 'PLAYING' && current?.id === p.id;
         return (
-          <div key={p.id} className={`card p-3 transition ${isCurrent ? 'ring-2 ring-py-red' : ''} ${p.bankrupt ? 'opacity-50 grayscale' : ''}`}>
+          <div key={p.id} data-player-card={p.id} className={`card relative p-3 transition ${isCurrent ? 'ring-2 ring-py-red' : ''} ${p.bankrupt ? 'opacity-50 grayscale' : ''}`}>
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-xl" style={{ boxShadow: `0 0 0 3px ${p.color}` }}>{tokenEmoji(p.token)}</span>
               <div className="min-w-0 flex-1">
@@ -29,11 +31,17 @@ export default function PlayerPanel() {
                   {!p.connected && !p.isBot && !p.bankrupt && <span className="chip bg-red-100 text-red-700">Offline</span>}
                 </div>
                 <div className="text-sm">
-                  <b className="text-emerald-700">{money(p.cash)}</b>
+                  <b className="text-emerald-700"><AnimatedNumber value={p.cash} format={money} /></b>
                   <span className="text-ink/50"> · patrimonio {money(netWorth(state as unknown as GameState, p.id))}</span>
+                  {p.lapsCompleted > 0 && <span className="text-ink/40"> · {p.lapsCompleted} vuelta{p.lapsCompleted === 1 ? '' : 's'}</span>}
+                  {(streak[p.id] ?? 0) >= 3 && <span className="streak ml-1 inline-block" title={`${streak[p.id]} alquileres cobrados seguidos`}>🔥{streak[p.id]}</span>}
                 </div>
               </div>
-              {p.jailCards.length > 0 && <span title="Carta Salís de Tacumbú" className="text-lg">🎟️{p.jailCards.length > 1 ? `×${p.jailCards.length}` : ''}</span>}
+              <div className="flex flex-col items-end gap-0.5 text-sm">
+                {p.jailCards.length > 0 && <span title="Carta Salís de Tacumbú">🎟️{p.jailCards.length > 1 ? `×${p.jailCards.length}` : ''}</span>}
+                {state.settings.duels && p.duelTokens > 0 && <span title="Fichas de Duelo mayor" className="duel-token">🔫×{p.duelTokens}</span>}
+                {state.settings.missions && p.missions.length > 0 && <span title="Misiones secretas cumplidas" className="text-xs">🎯 {p.missions.filter(m => m.done).length}/{p.missions.length}</span>}
+              </div>
             </div>
             {isHost && state.phase === 'PLAYING' && p.id !== me && !p.bankrupt && (
               <div className="mt-2 flex gap-1">

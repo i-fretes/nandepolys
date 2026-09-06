@@ -2,10 +2,14 @@
 
 Juego de compra-venta de propiedades estilo clásico, **ambientado en Paraguay**, para jugar **online de 2 a 6 personas** desde el navegador (PC o celular). Sin instalar nada: uno crea una sala, comparte el código o el link, y los demás entran.
 
-- 40 casillas, 28 propiedades y 32 cartas con nombres y humor paraguayos; moneda en guaraníes.
+- **44 casillas** (28 propiedades, Impuesto al lujo, dos 🎰 Casinos a los lados y dos 🏟️ Arenas arriba y abajo) y 32 cartas con nombres y humor paraguayos; moneda en guaraníes.
 - Reglas oficiales completas: subastas, alquileres dobles con grupo completo, construcción pareja, hipotecas al 110 %, cárcel (Tacumbú), intercambios, quiebra. Reglas caseras opcionales.
 - Servidor autoritativo (nadie puede hacer trampa), reconexión automática, chat, registro de jugadas, bots para rellenar.
 - Si alguien se va: el anfitrión puede reemplazarlo por un bot (recupera el control al volver) o sacarlo de la partida. Revancha con un botón. Ayuda de reglas dentro del juego, fichas que recorren el tablero y sonidos (con botón de silencio).
+- **Modo timba (opcional, se activa en el lobby):** Casinos con Ruleta 49/51 (carrete estilo apertura de caja), Quiniela, Doble o nada y Carrera de carretas; Jackpot que se lleva el doble seis; alquiler a doble o nada; y **desafíos** entre jugadores (duelo de dados, piedra-papel-tijera, trivia paraguaya con 172 preguntas, tereré caliente) por botón o por las cartas ¡Desafío!.
+- **Modo fiesta (v1.3, opcional):** 🏟️ **La Arena** (al caer, todos juegan a la vez uno de 11 mini-juegos votado entre 3 — Trivia relámpago, Caña dulce, Frená la barra, ¿Cuántos hay?, Palabra bomba con diccionario, Carrera de sapos, Duelo del Oeste, Esquivá el rayo, Penales, Ruleta rusa de globos y Adiviná el dibujo — y el banco paga 300/150/50 mil; el más pobre dobla), 🎁 **Caja sorpresa** al pasar por Salida (carrete estilo "skin club", promedio ≈ ₲ 200.000), 🎯 **Misiones secretas** (3 por jugador, se pagan solas), 🌪️ **Eventos globales** (ruleta de 20 eventos cada vuelta completa de la mesa; 2 de cada 3 giros: tranquilidad) y 🔫 **Duelo mayor** (una ficha cada 3 vueltas para retar por hasta ₲ 500.000 a **Escopeta** —cartuchos de verdad y de fogueo, lupa, cerveza y esposas— o **Truco paraguayo** a 15 con envido, flor, truco, retruco y vale cuatro).
+- 📊 **Tabla en vivo** a la izquierda del tablero: intercambios propuestos/aceptados/rechazados con animación, "X está negociando con Y", dobles o nada, desafíos, premios de la Arena, duelos, cajas, eventos y misiones.
+- Animaciones: billetes que vuelan entre jugadores, saldos que cuentan, +/− flotantes, temblor en pagos grandes, confeti al completar un grupo o ganar, dados y cartas en 3D, rejas al ir preso, racha 🔥 de alquileres, carrete de la caja, ruleta de eventos, podio de la Arena.
 
 > Proyecto independiente y sin fines comerciales. "Monopoly" es una marca de Hasbro; Ñandepoly no usa su nombre, arte ni textos.
 
@@ -34,7 +38,7 @@ Tocá cualquier casilla del tablero para ver su título de propiedad completo (p
 
 ```bash
 pnpm install          # instala dependencias de los 3 paquetes
-pnpm test             # 56 tests del motor de reglas (incluye partidas completas simuladas)
+pnpm test             # 74 tests del motor de reglas (incluye partidas completas simuladas)
 pnpm build            # compila cliente (apps/web/dist) y servidor (apps/server/dist)
 pnpm start            # http://localhost:8080
 ```
@@ -107,6 +111,10 @@ Desventaja: si apagás la PC o se cae tu internet, la partida se corta hasta que
 | `ROOM_TTL_HOURS` | `6` | Horas sin nadie conectado tras las cuales se borra una sala. |
 | `AUCTION_SECONDS` | `20` | Segundos de inactividad para cerrar una subasta. |
 | `BOT_DELAY_MS` | `900` | Pausa entre acciones de los bots (para que se vean). |
+| `CHALLENGE_ACCEPT_SECONDS` | `15` | Tiempo para aceptar un desafío. |
+| `RENT_OFFER_SECONDS` | `20` | Tiempo para decidir en el alquiler a doble o nada. |
+| `CASINO_IDLE_SECONDS` | `75` | Inactividad máxima dentro del Casino. |
+| `DEBUG_TOOLS` | *(vacío)* | `1` habilita ganchos de prueba (fijar dados/posición) para las pruebas e2e. No usar en producción. |
 | `PUBLIC_DIR` | *(auto)* | Ruta al cliente compilado si no está en `apps/web/dist`. |
 | `LOG_LEVEL` | `info` | Nivel de log de Fastify/pino. |
 
@@ -117,7 +125,9 @@ Desventaja: si apagás la PC o se cae tu internet, la partida se corta hasta que
 ```
 nandepoly/
 ├── packages/engine/        Motor de reglas (TypeScript puro, sin dependencias)
-│   ├── src/board.ts        Las 40 casillas paraguayas con precios y alquileres
+│   ├── src/board.ts        Las 44 casillas paraguayas con precios y alquileres
+│   ├── src/arena-data.ts   Mini-juegos de la Arena, eventos globales, misiones y premios de la caja
+│   ├── src/truco.ts        Reglas del truco paraguayo 1 vs 1
 │   ├── src/cards.ts        16 cartas Suerte + 16 Cooperativa
 │   ├── src/reducer.ts      Todas las reglas: applyAction(estado, acción) → nuevo estado
 │   ├── src/selectors.ts    Cálculos: alquiler, patrimonio, ¿puede construir?, etc.
@@ -144,16 +154,30 @@ Después de cambiar algo: `pnpm test && pnpm build` y volver a desplegar.
 
 ## Reglas caseras disponibles (las define el anfitrión en el lobby)
 
-Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial.
+Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial · **Casinos** (con apuesta máxima configurable) · **Jackpot** · **Alquiler a doble o nada** · **Desafíos** · **Duelo mayor** · **La Arena** · **Caja sorpresa** · **Misiones secretas** · **Eventos globales**.
+
+Todo lo de "timba" y "fiesta" viene apagado por defecto: sin tocar nada, la partida es la clásica (los Casinos y las Arenas son casillas de descanso).
+
+### Qué hace cada cosa nueva (v1.3)
+
+- **La Arena.** Dos casillas 🏟️. Se sortean 3 mini-juegos y se vota 8 s. Nadie apuesta: el banco paga ₲ 300.000 / 150.000 / 50.000 y, si gana el jugador de menor patrimonio, cobra doble. Palabra bomba acepta cualquier palabra del diccionario español (sin acentos, mayúsculas indistintas) más paraguayismos y palabras en guaraní. Carrera de sapos: flechas ← → o A/D en PC, dos botones en el celular; cada 3 s cuesta más avanzar; máximo 25 s.
+- **Caja sorpresa.** Reemplaza el sueldo fijo de Salida: ₲ 100.000 a 500.000, casa gratis (con grupo completo), carta de cárcel, tirada extra o multa de ₲ 50.000. Promedio ≈ ₲ 200.000.
+- **Misiones secretas.** 3 por jugador de un catálogo de 30; solo el dueño ve el texto. Se controlan y pagan solas (₲ 100.000–300.000).
+- **Eventos globales.** Cada vuelta completa de la mesa gira la ruleta: 2 de cada 3 veces sale Tranquilidad; el resto dura una vuelta (Hora feliz, Paro de la ANDE, Inflación, Sequía, Corte de ruta, Ruta cortada, Boom inmobiliario, San Juan, Lotería, Noche de casino, Visita del presidente) o se aplica al instante (Aguinaldo, Control de la SET, Día del Niño, Amnistía, Mudanza, Cooperativa solidaria, Remate del banco, Terremoto).
+- **Duelo mayor.** Cada 3 vueltas ganás una ficha 🔫. En tu turno retás a alguien por ₲ 50.000–500.000; negarse cuesta ₲ 50.000. Escopeta (estilo "Buckshot Roulette", 3 vidas, ítems) o Truco paraguayo 1 a 1 a 15 puntos. Solo vos ves tu mano; la lupa solo te la muestra a vos.
 
 ## Pruebas
 
 ```bash
-pnpm test                      # motor: 48 tests, incluye partidas completas con 2 y 6 jugadores
+pnpm test                      # motor: 95 tests, incluye partidas completas con 2 y 6 jugadores y todas las opciones
 pnpm build && pnpm start &     # levantar servidor
 pnpm e2e:bots                  # humano (script) + 5 bots juegan una partida entera por Socket.IO
 pnpm e2e                       # 6 navegadores reales juegan y uno se reconecta (requiere Chromium de Playwright)
 node e2e/features.mjs          # reemplazo por bot, sacar jugador, abandonar, fin de partida y revancha
+DEBUG_TOOLS=1 pnpm start &     # para la siguiente hace falta el servidor con ganchos de prueba
+node e2e/casino.mjs            # casino (ruleta, carrera, doble o nada), alquiler a doble o nada, trivia y piedra-papel-tijera
+node e2e/v13.mjs               # v1.3: caja sorpresa, Arena, duelos (Escopeta y Truco), ruleta de eventos, tabla en vivo
+node e2e/mobile.mjs            # capturas en celular
 ```
 
 ## Problemas frecuentes

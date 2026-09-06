@@ -1,31 +1,36 @@
 import { useEffect, useState } from 'react';
-import { BOARD, GROUP_COLORS, isProperty, type Tile as TileT } from '@nandepoly/engine';
+import { BOARD, EVENTS, GROUP_COLORS, SIDE_LEN, isProperty, type Tile as TileT } from '@nandepoly/engine';
+import AnimatedNumber from './AnimatedNumber';
 import { useStore } from '../store';
 import { moneyShort, tokenEmoji } from '../format';
 import Dice from './Dice';
 
-function gridPos(i: number): { col: number; row: number } {
-  if (i <= 10) return { row: 11, col: 11 - i };
-  if (i <= 20) return { col: 1, row: 21 - i };
-  if (i <= 30) return { row: 1, col: i - 19 };
-  return { col: 11, row: i - 29 };
+const N = SIDE_LEN + 1;            // casillas entre esquina y esquina (11): las esquinas son 0, 11, 22, 33
+const G = SIDE_LEN + 2;            // columnas/filas de la grilla (12)
+export function gridPos(i: number): { col: number; row: number } {
+  if (i <= N) return { row: G, col: G - i };                 // abajo, de derecha a izquierda
+  if (i <= 2 * N) return { col: 1, row: G - (i - N) };       // izquierda, subiendo
+  if (i <= 3 * N) return { row: 1, col: 1 + (i - 2 * N) };   // arriba, hacia la derecha
+  return { col: G, row: 1 + (i - 3 * N) };                   // derecha, bajando
 }
 function side(i: number): 'bottom' | 'left' | 'top' | 'right' {
-  if (i <= 10) return 'bottom';
-  if (i <= 20) return 'left';
-  if (i <= 30) return 'top';
+  if (i <= N) return 'bottom';
+  if (i <= 2 * N) return 'left';
+  if (i <= 3 * N) return 'top';
   return 'right';
 }
 
 const ICONS: Record<string, string> = {
-  go: '🚀', jail: '🚔', parking: '🅿️', gotojail: '👮', chance: '❓', community: '🤝', tax: '🧾', transport: '🚌', utility: '💡',
+  go: '🚀', jail: '🚔', parking: '🅿️', gotojail: '👮', chance: '❓', community: '🤝', tax: '🧾', transport: '🚌', utility: '💡', casino: '🎰', arena: '🏟️',
 };
 
 export default function Board() {
   const state = useStore(s => s.state)!;
   const setSelected = useStore(s => s.setSelectedTile);
   const displayPos = useStore(s => s.displayPos);
+  const highlight = useStore(s => s.highlightGroup);
   const current = state.players[state.currentPlayerIndex];
+  const glowGroup = highlight && highlight.until > Date.now() ? highlight.group : null;
 
   return (
     <div className="board w-full">
@@ -33,17 +38,17 @@ export default function Board() {
         const pos = gridPos(t.id);
         const ps = isProperty(t) ? state.properties[t.id] : null;
         const owner = ps?.owner ? state.players.find(p => p.id === ps.owner) : null;
-        const corner = t.id % 10 === 0;
+        const corner = t.id % N === 0;
         const here = state.players.filter(p => !p.bankrupt && (displayPos[p.id] ?? p.position) === t.id);
         return (
           <div
             key={t.id}
-            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''}`}
+            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''} ${t.type === 'street' && t.group === glowGroup ? 'glow-group' : ''}`}
             style={{ gridColumn: pos.col, gridRow: pos.row, ['--owner' as string]: owner?.color ?? 'transparent' }}
             onClick={() => setSelected(t.id)}
             title={t.name}
           >
-            <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} />
+            <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} active={t.type === 'casino' ? state.settings.casino : t.type === 'arena' ? state.settings.arena : true} />
             {here.length > 0 && (
               <div className="tokens">
                 {here.map(p => (
@@ -61,7 +66,29 @@ export default function Board() {
   );
 }
 
-function TileContent({ t, houses, corner }: { t: TileT; houses: number; corner: boolean }) {
+function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; corner: boolean; active?: boolean }) {
+  if (t.type === 'casino') {
+    return (
+      <>
+        <div className={`band ${active ? 'neon' : ''}`} style={{ background: active ? 'linear-gradient(90deg,#7c3aed,#db2777)' : '#cfd8dc' }}><span style={{ fontSize: '1.7cqw' }}>🎰</span></div>
+        <div className="body">
+          <div className="name">Casino</div>
+          <div className="price">{active ? '¡Apostá!' : 'Descanso'}</div>
+        </div>
+      </>
+    );
+  }
+  if (t.type === 'arena') {
+    return (
+      <>
+        <div className={`band ${active ? 'neon' : ''}`} style={{ background: active ? 'linear-gradient(90deg,#f59e0b,#ef4444)' : '#cfd8dc' }}><span style={{ fontSize: '1.7cqw' }}>🏟️</span></div>
+        <div className="body">
+          <div className="name">La Arena</div>
+          <div className="price">{active ? 'Todos juegan' : 'Descanso'}</div>
+        </div>
+      </>
+    );
+  }
   if (corner) {
     return (
       <div className="body">
@@ -141,6 +168,16 @@ function Center() {
       {state.settings.freeParkingPot && state.freeParkingPot > 0 && (
         <div className="mt-[1cqw] rounded-full bg-emerald-600 px-[2cqw] py-[0.5cqw] text-white" style={{ fontSize: '1.6cqw' }}>
           Pozo: {moneyShort(state.freeParkingPot)}
+        </div>
+      )}
+      {state.activeEvent && (() => { const ev = EVENTS.find(e => e.id === state.activeEvent!.id); return ev ? (
+        <div className="event-badge mt-[1cqw] rounded-full px-[2cqw] py-[0.5cqw] font-bold text-white" style={{ fontSize: '1.6cqw' }} title={ev.desc}>
+          {ev.icon} {ev.name}{state.activeEvent!.data?.number ? ` · nº ${state.activeEvent!.data.number}` : ''}
+        </div>
+      ) : null; })()}
+      {state.settings.jackpot && (
+        <div className="mt-[1cqw] rounded-full bg-gradient-to-r from-purple-700 to-pink-600 px-[2cqw] py-[0.5cqw] font-black text-yellow-300 shadow" style={{ fontSize: '1.7cqw', letterSpacing: '.05em' }} title="Doble seis se lo lleva">
+          🎰 JACKPOT <AnimatedNumber value={state.jackpot} format={n => '₲ ' + (n * 1000).toLocaleString('es-PY')} />
         </div>
       )}
       {last && (

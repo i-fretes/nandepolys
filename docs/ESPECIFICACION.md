@@ -8,7 +8,7 @@ Versión 1.0 · Septiembre 2026 · Preparado para Ivan (Biotecnica)
 
 ## 1. Resumen ejecutivo
 
-Ñandepoly replica las reglas oficiales del Monopoly clásico (edición estándar, 40 casillas, 28 propiedades, 32 cartas) con nombres, moneda y humor paraguayos. Se juega desde el navegador (PC o celular) en salas privadas con código; el servidor arbitra la partida para que nadie pueda hacer trampa. Todo el proyecto se escribe en un solo lenguaje (TypeScript), con las reglas del juego aisladas en un módulo compartido y cubierto por tests automáticos.
+Ñandepoly replica las reglas oficiales del Monopoly clásico (edición estándar de 40 casillas ampliada a 44 en v1.3: 28 propiedades, 32 cartas, dos Casinos y dos Arenas) con nombres, moneda y humor paraguayos. Se juega desde el navegador (PC o celular) en salas privadas con código; el servidor arbitra la partida para que nadie pueda hacer trampa. Todo el proyecto se escribe en un solo lenguaje (TypeScript), con las reglas del juego aisladas en un módulo compartido y cubierto por tests automáticos.
 
 **Nota legal.** "Monopoly", su logotipo, el tablero original y el personaje del bigote son marcas registradas de Hasbro. Las mecánicas de juego no son protegibles por derecho de autor, por lo que replicar las reglas es lícito, pero el proyecto usa nombre propio, arte propio y cartas redactadas desde cero (mismos efectos, distinto texto). Uso previsto: privado, entre amigos, sin fines comerciales.
 
@@ -93,7 +93,7 @@ nandepoly/
 │   └── engine/
 │       ├── src/
 │       │   ├── types.ts         # GameState, Player, Property, Action, Event
-│       │   ├── board.ts         # Las 40 casillas (datos de la sección 5)
+│       │   ├── board.ts         # Las 44 casillas (datos de la sección 5; v1.3 agrega Casinos y Arenas)
 │       │   ├── cards.ts         # 16 Suerte + 16 Cooperativa (sección 6)
 │       │   ├── rng.ts           # Dados con semilla (reproducible en tests)
 │       │   ├── reducer.ts       # applyAction(state, action) → { state, events }
@@ -283,7 +283,7 @@ Si debés más de lo que podés pagar aun vendiendo edificios e hipotecando, que
 
 ---
 
-## 5. El tablero paraguayo (40 casillas)
+## 5. El tablero paraguayo (40 casillas en v1.0; 44 desde v1.3 — ver README para el mapa actualizado)
 
 Moneda: **guaraníes (₲)**, equivalencia 1 dólar-monopoly = ₲ 1.000. Se muestra siempre con separador de miles y símbolo ₲ (ej. ₲ 1.500.000). Internamente el motor trabaja en miles (enteros pequeños) y el cliente multiplica para mostrar.
 

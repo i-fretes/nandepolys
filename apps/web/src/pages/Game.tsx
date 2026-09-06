@@ -13,8 +13,18 @@ import TradeDialog from '../components/TradeDialog';
 import CardModal from '../components/CardModal';
 import GameOver from '../components/GameOver';
 import RulesDialog from '../components/RulesDialog';
+import FX from '../components/FX';
+import CasinoDialog from '../components/CasinoDialog';
+import RentOfferDialog from '../components/RentOfferDialog';
+import ChallengeDialog from '../components/ChallengeDialog';
+import LivePanel from '../components/LivePanel';
+import ArenaDialog from '../components/ArenaDialog';
+import DuelDialog from '../components/DuelDialog';
+import LootboxOverlay from '../components/LootboxOverlay';
+import EventWheel from '../components/EventWheel';
+import MissionsPanel from '../components/MissionsPanel';
 import { isMuted, setMuted } from '../sound';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function Game() {
   const state = useStore(s => s.state)!;
@@ -27,8 +37,12 @@ export default function Game() {
   const setRulesOpen = useStore(s => s.setRulesOpen);
   const act = useStore(s => s.act);
   const [muted, setMutedState] = useState(isMuted());
+  const [menuOpen, setMenuOpen] = useState(false);
   const me = state.players.find(p => p.id === playerId);
   const canAbandon = !!me && !me.bankrupt && state.phase === 'PLAYING';
+  const myTurn = state.phase === 'PLAYING' && state.players[state.currentPlayerIndex]?.id === playerId && (state.turnPhase === 'AWAITING_ROLL' || state.turnPhase === 'END_TURN');
+
+  useEffect(() => { window.scrollTo({ top: 0 }); }, []);
 
   async function endGame() {
     if (!confirm('¿Terminar la partida ahora? Gana quien tenga mayor patrimonio.')) return;
@@ -36,9 +50,14 @@ export default function Game() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-[1500px] flex-col gap-3 p-2 sm:p-3 lg:h-screen lg:flex-row">
+    <div className="mx-auto flex min-h-full max-w-[1800px] flex-col gap-3 p-2 sm:p-3 lg:h-screen lg:flex-row">
+      {/* Tabla en vivo (izquierda) */}
+      <aside className="order-3 flex flex-col gap-3 lg:order-1 lg:h-full lg:w-[300px] lg:shrink-0 lg:overflow-hidden xl:w-[340px]">
+        <div className="max-h-[40vh] lg:max-h-none lg:flex-1 lg:overflow-hidden"><LivePanel /></div>
+        <MissionsPanel />
+      </aside>
       {/* Tablero */}
-      <div className="flex flex-col items-center gap-3 lg:flex-1 lg:justify-center">
+      <div className="order-1 flex flex-col items-center gap-3 lg:order-2 lg:flex-1 lg:justify-center">
         {!connected && (
           <div className="w-full rounded-xl bg-red-600 px-3 py-2 text-center text-sm font-semibold text-white">Sin conexión… intentando reconectar</div>
         )}
@@ -51,27 +70,33 @@ export default function Game() {
       </div>
 
       {/* Panel lateral */}
-      <aside className="flex flex-col gap-3 lg:h-full lg:w-[360px] lg:shrink-0 lg:overflow-hidden">
-        <div className="flex flex-col gap-1 rounded-2xl bg-white/70 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <aside className="order-2 flex flex-col gap-3 lg:order-3 lg:h-full lg:w-[340px] lg:shrink-0 lg:overflow-hidden xl:w-[360px]">
+        <div className="relative flex items-center justify-between gap-2 rounded-2xl bg-white/70 px-3 py-2 text-sm">
           <div>Sala <b className="tracking-widest text-py-red">{roomCode}</b></div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex items-center gap-2">
             <button className="text-xs font-semibold text-py-blue hover:underline" onClick={() => setRulesOpen(true)}>📖 Reglas</button>
-            <button className="text-xs text-ink/60 hover:text-ink" title={muted ? 'Activar sonido' : 'Silenciar'} onClick={() => { setMuted(!muted); setMutedState(!muted); }}>{muted ? '🔇' : '🔊'}</button>
-            {isHost && state.phase === 'PLAYING' && <button className="text-xs text-ink/50 hover:text-red-600" onClick={endGame}>Terminar partida</button>}
-            <button className="text-xs text-ink/50 hover:text-ink" title="Cerrar esta pestaña; podés volver con el mismo link" onClick={() => {
-              if (confirm('¿Salir? Podés volver con el mismo link y seguís con tu jugador.')) { leaveRoom(); nav('/'); }
-            }}>Salir</button>
-            {canAbandon && (
-              <button className="text-xs text-ink/50 hover:text-red-600" title="Retirarme de la partida definitivamente" onClick={async () => {
-                if (confirm('¿Abandonar la partida? Quedás fuera: tus propiedades vuelven al banco y se subastan. Podés seguir mirando.')) await act({ type: 'LEAVE_GAME' });
-              }}>Abandonar partida</button>
-            )}
-            {!canAbandon && (
-              <button className="text-xs text-ink/50 hover:text-red-600" title="Olvidar mi lugar en esta sala" onClick={() => {
-                if (roomCode && confirm('Esto borra tu sesión guardada de esta sala. ¿Seguro?')) { clearSession(roomCode); leaveRoom(); nav('/'); }
-              }}>Olvidar sala</button>
-            )}
+            <button className="text-sm text-ink/60 hover:text-ink" title={muted ? 'Activar sonido' : 'Silenciar'} onClick={() => { setMuted(!muted); setMutedState(!muted); }}>{muted ? '🔇' : '🔊'}</button>
+            <button className="btn-ghost btn-sm !px-2 !py-1 text-xs" onClick={() => setMenuOpen(v => !v)} aria-expanded={menuOpen}>☰ Más</button>
           </div>
+          {menuOpen && (
+            <div className="absolute right-2 top-full z-30 mt-1 flex w-56 flex-col gap-1 rounded-xl border border-black/10 bg-white p-2 text-left shadow-xl" onMouseLeave={() => setMenuOpen(false)}>
+              {isHost && state.phase === 'PLAYING' && <button className="rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100" onClick={() => { setMenuOpen(false); endGame(); }}>🏁 Terminar partida</button>}
+              <button className="rounded-lg px-2 py-1.5 text-left text-xs hover:bg-slate-100" title="Cerrar esta pestaña; podés volver con el mismo link" onClick={() => {
+                if (confirm('¿Salir? Podés volver con el mismo link y seguís con tu jugador.')) { leaveRoom(); nav('/'); }
+              }}>🚪 Salir (podés volver)</button>
+              {canAbandon && (
+                <button className="rounded-lg px-2 py-1.5 text-left text-xs text-red-700 hover:bg-red-50" title="Retirarme de la partida definitivamente" onClick={async () => {
+                  setMenuOpen(false);
+                  if (confirm('¿Abandonar la partida? Quedás fuera: tus propiedades vuelven al banco y se subastan. Podés seguir mirando.')) await act({ type: 'LEAVE_GAME' });
+                }}>💸 Abandonar partida</button>
+              )}
+              {!canAbandon && (
+                <button className="rounded-lg px-2 py-1.5 text-left text-xs text-red-700 hover:bg-red-50" title="Olvidar mi lugar en esta sala" onClick={() => {
+                  if (roomCode && confirm('Esto borra tu sesión guardada de esta sala. ¿Seguro?')) { clearSession(roomCode); leaveRoom(); nav('/'); }
+                }}>🧹 Olvidar sala</button>
+              )}
+            </div>
+          )}
         </div>
         <div className="scroll-thin lg:max-h-[46%] lg:overflow-y-auto"><PlayerPanel /></div>
         <LogChat />
@@ -84,6 +109,15 @@ export default function Game() {
       <CardModal />
       <GameOver />
       <RulesDialog />
+      <CasinoDialog />
+      <RentOfferDialog />
+      <ChallengeDialog />
+      <ArenaDialog />
+      <DuelDialog />
+      <LootboxOverlay />
+      <EventWheel />
+      <FX />
+      {myTurn && <div className="my-turn-glow" style={{ ['--glow' as string]: me?.color }} />}
     </div>
   );
 }

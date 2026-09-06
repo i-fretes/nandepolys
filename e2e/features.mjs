@@ -18,7 +18,7 @@ async function page() {
 }
 const clickIf = async (p, text) => {
   const btn = p.locator(`button:has-text("${text}"):not([disabled])`).first();
-  try { if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500 }); return true; } } catch {}
+  try { if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500, force: true }); return true; } } catch {}
   return false;
 };
 
@@ -85,6 +85,7 @@ await c2.waitForTimeout(800);
 ok((await a.locator('.card', { hasText: 'Mateo' }).first().locator('span:text-is("Bot")').count()) === 0, 'Mateo recuperó el control al volver');
 
 // Sofía abandona por su cuenta
+await d.click('button:has-text("Más")');
 await d.click('button:has-text("Abandonar partida")');
 await a.waitForSelector('text=Sofía abandonó la partida', { timeout: 5000 });
 ok(true, 'Sofía abandonó; sus propiedades van a subasta si tenía');
@@ -98,6 +99,7 @@ for (let i = 0; i < 12; i++) { for (const p of [a, c2]) await clickIf(p, 'Me ret
 await a.screenshot({ path: `${OUT}/despues-de-salidas.png` });
 
 // Terminar partida y revancha
+await a.click('button:has-text("Más")');
 await a.click('button:has-text("Terminar partida")');
 await a.waitForSelector('text=Revancha', { timeout: 5000 });
 await a.screenshot({ path: `${OUT}/fin-revancha.png` });
