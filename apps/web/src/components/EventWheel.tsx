@@ -3,10 +3,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { EVENTS } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { sfx } from '../sound';
+import { useReelSpin } from './reel';
 
 const CELL = 112;     // ancho de cada evento en el carrete (px incl. gap)
 const CELLS = 46;
-const WIN = 8;        // celda donde frena (el carrete avanza de izquierda a derecha)
+const WIN = 36;       // celda donde frena; el carrete llega desde la izquierda (las celdas pasan hacia la derecha)
 const SPIN_MS = 6000;
 const COLORS = ['lb-blue', 'lb-purple', 'lb-gold', 'lb-red', 'lb-blue', 'lb-purple'];
 
@@ -33,23 +34,13 @@ export default function EventWheel() {
     return out;
   }, [spin]);
 
+  // Las celdas pasan de izquierda a derecha y frenan con el evento ganador (celda WIN) bajo el marcador
+  useReelSpin(stripRef, !!spin, { cell: CELL, winCell: WIN, ms: SPIN_MS, direction: 'right', jitterKey: spin?.id });
+
   useEffect(() => {
     if (!spin) return;
     setDone(false);
-    const strip = stripRef.current;
     const timers: ReturnType<typeof setTimeout>[] = [];
-    if (strip) {
-      const width = strip.parentElement!.clientWidth;
-      // termina con la celda WIN en el centro; arranca mucho más a la izquierda (avanza hacia la derecha)
-      const end = width / 2 - CELL / 2 - WIN * CELL + (Math.random() - 0.5) * CELL * 0.5;
-      const start = end - (CELLS - WIN - 3) * CELL;
-      strip.style.transition = 'none';
-      strip.style.transform = `translateX(${start}px)`;
-      requestAnimationFrame(() => {
-        strip.style.transition = `transform ${SPIN_MS}ms cubic-bezier(.1,.8,.15,1)`;
-        strip.style.transform = `translateX(${end}px)`;
-      });
-    }
     let n = 0;
     const schedule = (d: number) => { if (d > SPIN_MS - 200) return; timers.push(setTimeout(() => { sfx.tick(); n++; schedule(d + 45 + n * n * 1.1); }, d)); };
     schedule(80);

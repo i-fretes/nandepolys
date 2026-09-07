@@ -3,11 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { LOOTBOX } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { epic, sfx } from '../sound';
+import { useReelSpin } from './reel';
 import { tokenEmoji } from '../format';
 
 const CELL = 96;      // ancho de cada premio en el carrete (px incl. gap)
 const CELLS = 40;     // celdas totales del carrete
-const WIN = 33;       // celda donde frena
+const WIN = 34;       // celda donde frena (las celdas pasan de derecha a izquierda)
 const SPIN_MS = 3500; // duración del giro
 
 const ICON: Record<string, string> = {
@@ -58,6 +59,9 @@ export default function LootboxOverlay() {
     return () => clearTimeout(t);
   }, [box?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // El giro en sí arranca cuando el carrete ya está en pantalla (fase 'spin')
+  useReelSpin(stripRef, phase === 'spin', { cell: CELL, winCell: WIN, ms: SPIN_MS, direction: 'left', jitterKey: box?.id });
+
   // Apertura: fanfarria + giro
   useEffect(() => {
     if (!box?.openedAt) return;
@@ -66,17 +70,6 @@ export default function LootboxOverlay() {
     const start = setTimeout(() => {
       setPhase('spin');
       epic();
-      const strip = stripRef.current;
-      if (strip) {
-        strip.style.transition = 'none';
-        strip.style.transform = 'translateX(0px)';
-        const jitter = (Math.random() - 0.5) * (CELL * 0.6);
-        const target = -(WIN * CELL - (strip.parentElement!.clientWidth / 2 - CELL / 2)) + jitter;
-        requestAnimationFrame(() => {
-          strip.style.transition = `transform ${SPIN_MS}ms cubic-bezier(.08,.82,.17,1)`;
-          strip.style.transform = `translateX(${target}px)`;
-        });
-      }
       let n = 0;
       const schedule = (d: number) => { if (d > SPIN_MS - 100) return; timers.push(setTimeout(() => { sfx.tick(); n++; schedule(d + 40 + n * n * 1.9); }, d)); };
       schedule(60);
