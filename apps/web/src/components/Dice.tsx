@@ -18,12 +18,12 @@ export function Die3D({ value, rolling, size }: { value: number | null; rolling:
     const extra = `rotateX(${360 * turns.current}deg) rotateY(${360 * turns.current}deg) `;
     setTransform(extra + SHOW[value]);
   }, [value, rolling]);
-  const style = size ? { width: size, height: size, perspective: `calc(${size} * 5)` } : undefined;
+  const style = { ['--d' as string]: size ?? '6cqw' } as React.CSSProperties;
   return (
     <div className={`die3d-scene ${rolling ? 'rolling' : ''}`} style={style}>
       <div className="die3d" style={{ transform }}>
         {[1, 2, 3, 4, 5, 6].map(n => (
-          <div key={n} className={`face f${n}`} style={size ? { fontSize: `calc(${size} * .85)` } : undefined}>
+          <div key={n} className={`face f${n}`}>
             {value ? FACES[n - 1] : <span className="opacity-30">?</span>}
           </div>
         ))}

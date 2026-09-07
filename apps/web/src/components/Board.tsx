@@ -178,6 +178,7 @@ function Center() {
       {state.settings.jackpot && (
         <div className="mt-[1cqw] rounded-full bg-gradient-to-r from-purple-700 to-pink-600 px-[2cqw] py-[0.5cqw] font-black text-yellow-300 shadow" style={{ fontSize: '1.7cqw', letterSpacing: '.05em' }} title="Doble seis se lo lleva">
           🎰 JACKPOT <AnimatedNumber value={state.jackpot} format={n => '₲ ' + (n * 1000).toLocaleString('es-PY')} />
+          <span className="ml-[1cqw] font-semibold text-white/80" style={{ fontSize: '1.2cqw' }}>· sacá ⚅⚅ y es tuyo</span>
         </div>
       )}
       {last && (

@@ -82,3 +82,68 @@ export const sfx = {
   bars() { noise(0.1, 0.15); tone(200, 0.3, { type: 'sawtooth', gain: 0.1, slideTo: 80, at: 0.05 }); },
   fire() { noise(0.4, 0.06); },
 };
+
+// ---------------------------------------------------------------------------------------
+// Música de fondo (chiptune suave, muy bajita) y fanfarria "épica" para la caja sorpresa
+// ---------------------------------------------------------------------------------------
+let musicOn = (() => { try { return localStorage.getItem('nandepoly:music') !== '0'; } catch { return true; } })();
+let musicTimer: ReturnType<typeof setInterval> | null = null;
+let musicGain: GainNode | null = null;
+let step = 0;
+// Progresión relajada en La menor: Am – F – C – G (arpegios), bajo y un "hi-hat" de ruido
+const CHORDS = [[220, 261.6, 329.6], [174.6, 220, 261.6], [130.8, 164.8, 196], [196, 246.9, 293.7]];
+
+function musicTick() {
+  const a = ac();
+  if (!a || muted || !musicOn) return;
+  if (!musicGain) { musicGain = a.createGain(); musicGain.gain.value = 0.035; musicGain.connect(a.destination); }
+  const chord = CHORDS[Math.floor(step / 8) % CHORDS.length];
+  const t0 = a.currentTime;
+  const note = (freq: number, dur: number, type: OscillatorType, gain: number, at = 0) => {
+    const osc = a.createOscillator(); const g = a.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0 + at);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + at + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+    osc.connect(g).connect(musicGain!);
+    osc.start(t0 + at); osc.stop(t0 + at + dur + 0.05);
+  };
+  // arpegio
+  const n = chord[step % 3] * (step % 8 >= 4 ? 2 : 1);
+  note(n, 0.22, 'triangle', 0.5);
+  // bajo cada 4 pasos
+  if (step % 4 === 0) note(chord[0] / 2, 0.5, 'sine', 0.7);
+  // melodía ocasional
+  if (step % 8 === 6) note(chord[2] * 2, 0.3, 'square', 0.12);
+  step++;
+}
+
+export function isMusicOn() { return musicOn; }
+export function setMusicOn(v: boolean) {
+  musicOn = v;
+  try { localStorage.setItem('nandepoly:music', v ? '1' : '0'); } catch { /* ignore */ }
+  if (v) startMusic(); else stopMusic();
+}
+export function startMusic() {
+  if (musicTimer || !musicOn) return;
+  musicTimer = setInterval(musicTick, 250); // 240 bpm de corcheas → tranquilo
+}
+export function stopMusic() {
+  if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+}
+
+/** Fanfarria épica de ~3,5 s para la caja sorpresa: redoble + subida + acorde final. */
+export function epic() {
+  const a = ac();
+  if (!a || muted) return;
+  // redoble de tambor que se acelera
+  let t = 0;
+  for (let i = 0; i < 26; i++) { tone(90, 0.12, { type: 'sine', gain: 0.18, slideTo: 45, at: t }); noise(0.04, 0.06, t); t += 0.16 - i * 0.004; }
+  // subida (riser)
+  tone(110, 3.0, { type: 'sawtooth', gain: 0.05, slideTo: 880 });
+  tone(165, 3.0, { type: 'sawtooth', gain: 0.04, slideTo: 1320, at: 0.1 });
+  // acorde final brillante
+  [523.3, 659.3, 784, 1046.5].forEach((f, i) => tone(f, 0.9, { type: 'triangle', gain: 0.12, at: 3.3 + i * 0.03 }));
+  tone(261.6, 1.2, { type: 'sine', gain: 0.15, at: 3.3 });
+  noise(0.3, 0.1, 3.3);
+}

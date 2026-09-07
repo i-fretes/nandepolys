@@ -11,6 +11,7 @@ export type TrucoMove = { kind: 'play'; card: number } | { kind: 'call'; what: T
 export interface TrucoPublic {
   scores: Record<string, number>;
   target: number;
+  maxHands: number;                   // se juegan como máximo estas manos; gana el que va adelante (empate: una más)
   hand: number;                       // número de mano
   dealer: string;                     // el "pie"
   mano: string;                       // el que juega primero
@@ -78,10 +79,10 @@ export function cardName(c: TCard): string {
   return `${names[c.r]} de ${c.s}`;
 }
 
-export function newTruco(a: string, b: string, seed: number, target = 15): TrucoState {
+export function newTruco(a: string, b: string, seed: number, target = 15, maxHands = 2): TrucoState {
   const st: TrucoState = {
     pub: {
-      scores: { [a]: 0, [b]: 0 }, target, hand: 0, dealer: b, mano: a, turn: a, table: { [a]: [], [b]: [] },
+      scores: { [a]: 0, [b]: 0 }, target, maxHands, hand: 0, dealer: b, mano: a, turn: a, table: { [a]: [], [b]: [] },
       baza: 0, bazaWinners: [], handValue: 1, trucoLevel: 0, trucoCallerLast: null, pending: null, envidoDone: false,
       envidoChain: [], envidoPoints: 0, cardCount: { [a]: 3, [b]: 3 }, log: [], finished: false, winner: null, lastEnvido: null, flor: {},
     },
@@ -130,10 +131,19 @@ function deal(st: TrucoState) {
   }
 }
 
-function checkEnd(st: TrucoState): boolean {
+function checkEnd(st: TrucoState, handOver = false): boolean {
   const p = st.pub;
   for (const id of Object.keys(p.scores)) {
     if (p.scores[id] >= p.target) { p.finished = true; p.winner = id; p.log.push(`${id} llegó a ${p.target}. ¡Ganó el truco!`); return true; }
+  }
+  if (handOver && p.hand >= p.maxHands) {
+    const [x, y] = Object.keys(p.scores);
+    if (p.scores[x] !== p.scores[y]) {
+      const w = p.scores[x] > p.scores[y] ? x : y;
+      p.finished = true; p.winner = w; p.log.push(`Se jugaron ${p.hand} manos: gana ${w} ${p.scores[w]} a ${p.scores[w === x ? y : x]}.`);
+      return true;
+    }
+    p.log.push('Empate tras las manos pactadas: ¡una mano más de desempate!');
   }
   return false;
 }
@@ -297,7 +307,7 @@ function endHand(s: TrucoState, winner: string, pts: number): TrucoState {
   p.scores[winner] += pts;
   p.log.push(`Mano para ${winner}: ${pts} punto(s). (${Object.entries(p.scores).map(([k, v]) => `${k} ${v}`).join(' · ')})`);
   p.pending = null; p.turnAfterCall = undefined;
-  if (checkEnd(s)) return s;
+  if (checkEnd(s, true)) return s;
   deal(s);
   return s;
 }

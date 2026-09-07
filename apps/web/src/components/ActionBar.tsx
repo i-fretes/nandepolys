@@ -1,5 +1,5 @@
 import { JAIL_FINE, legalActions, netWorth, tile, type GameState, type PropertyTile } from '@nandepoly/engine';
-import { useIsMyTurn, useMe, useStore } from '../store';
+import { useIsMyTurn, useMe, useMoving, useStore } from '../store';
 import { money } from '../format';
 
 export default function ActionBar() {
@@ -9,6 +9,7 @@ export default function ActionBar() {
   const act = useStore(s => s.act);
   const setDialog = useStore(s => s.setDialog);
   const spectator = useStore(s => s.spectator);
+  const moving = useMoving();
   const current = state.players[state.currentPlayerIndex];
 
   if (spectator || !me) {
@@ -31,6 +32,9 @@ export default function ActionBar() {
 
   if (me.bankrupt) return <Bar><span className="text-sm text-ink/60">Quebraste. Podés seguir mirando la partida.</span></Bar>;
 
+  if (moving && state.phase === 'PLAYING') {
+    return <Bar><span className="text-sm font-semibold animate-pulse">🚶 {current?.name} está avanzando…</span></Bar>;
+  }
   if (state.turnPhase === 'AUCTION') {
     return <Bar><span className="text-sm font-semibold">🔨 Subasta en curso</span></Bar>;
   }

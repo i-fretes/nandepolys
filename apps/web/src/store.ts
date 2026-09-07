@@ -8,6 +8,7 @@ export interface ChatMessage { id: string; playerId: string | null; name: string
 
 export interface RoomView {
   state: ClientState;
+  serverTime?: number;
   chat: ChatMessage[];
   auctionDeadline: number | null;
   turnDeadline: number | null;
@@ -44,12 +45,15 @@ interface Store {
   duelEvents: { id: number; type: string; data: Record<string, unknown>; text: string; playerId?: string }[];
   liveFeed: LiveEntry[];                // tabla en vivo (izquierda)
   drafting: Record<string, { toId: string; at: number }>; // quién está armando una propuesta a quién
-  lootbox: { id: number; playerId: string; index: number; label: string; amount: number; prize: string } | null;
+  lootbox: { id: number; playerId: string; index: number; label: string; amount: number; prize: string; openedAt: number | null } | null;
+  clockOffset: number;                  // serverTime - Date.now(); para temporizadores sincronizados
+  moving: string | null;                // jugador cuya ficha está recorriendo el tablero (se espera para mostrar compra/alquiler)
   eventSpin: { id: number; eventId: string; index: number; text: string } | null;
   lastDuelResult: { id: number; winner: string; loser: string; amount: number; game: string } | null;
 
   setConnected(v: boolean): void;
   setLootbox(v: null): void;
+  openLootbox(): void;
   setEventSpin(v: null): void;
   setLastDuelResult(v: null): void;
   sendDrafting(toId: string | null): void;
@@ -119,9 +123,12 @@ export const useStore = create<Store>((set, get) => ({
   lootbox: null,
   eventSpin: null,
   lastDuelResult: null,
+  clockOffset: 0,
+  moving: null,
 
   setConnected: v => set({ connected: v }),
   setLootbox: v => set({ lootbox: v }),
+  openLootbox: () => { try { socket.emit('lootbox:open'); } catch { /* ignore */ } },
   setEventSpin: v => set({ eventSpin: v }),
   setLastDuelResult: v => set({ lastDuelResult: v }),
   sendDrafting: toId => { try { socket.emit('trade:drafting', { toId }); } catch { /* ignore */ } },
@@ -131,6 +138,7 @@ export const useStore = create<Store>((set, get) => ({
     state: info.state, chat: info.chat, auctionDeadline: info.auctionDeadline, turnDeadline: info.turnDeadline, phaseDeadline: info.phaseDeadline ?? null,
     events: info.state.log.slice(-60),
     displayPos: Object.fromEntries(info.state.players.map(p => [p.id, p.position])),
+    clockOffset: typeof info.serverTime === 'number' ? info.serverTime - Date.now() : 0,
   }),
 
   applyView: (view, events = []) => {
@@ -139,6 +147,7 @@ export const useStore = create<Store>((set, get) => ({
     const patch: Partial<Store> = {
       state: view.state, chat: view.chat, auctionDeadline: view.auctionDeadline, turnDeadline: view.turnDeadline, phaseDeadline: view.phaseDeadline ?? null,
     };
+    if (typeof view.serverTime === 'number') patch.clockOffset = view.serverTime - Date.now();
     const fx: FxEvent[] = [];
     const push = (f: FxInput) => fx.push({ ...f, id: ++fxCounter } as FxEvent);
     const streak = { ...get().streak };
@@ -208,7 +217,8 @@ export const useStore = create<Store>((set, get) => ({
         if (e.type === 'jackpot') live({ kind: 'jackpot', text: e.text, to: e.playerId, amount: amt, data: e.data ?? {} });
         // ---- Caja sorpresa ----
         if (e.type === 'lootbox' && e.playerId) {
-          patch.lootbox = { id: ++fxCounter, playerId: e.playerId, index: (e.data?.index as number) ?? 0, label: String(e.data?.label ?? ''), amount: amt, prize: String(e.data?.prize ?? '') };
+          const owner = view.state.players.find(p => p.id === e.playerId);
+          patch.lootbox = { id: ++fxCounter, playerId: e.playerId, index: (e.data?.index as number) ?? 0, label: String(e.data?.label ?? ''), amount: amt, prize: String(e.data?.prize ?? ''), openedAt: owner?.isBot || !owner?.connected ? Date.now() + 800 : null };
           if (amt > 0) { push({ kind: 'money', from: 'bank', to: e.playerId, amount: amt }); push({ kind: 'float', playerId: e.playerId, text: `+${moneyFmt(amt)}`, tone: 'good' }); }
           if (amt < 0) push({ kind: 'float', playerId: e.playerId, text: `−${moneyFmt(-amt)}`, tone: 'bad' });
           if (e.data?.prize === 'g500') push({ kind: 'confetti', playerId: e.playerId });
@@ -343,21 +353,28 @@ function animateMoves(prev: ClientState, next: ClientState, events: GameEvent[])
     const forward = (p.position - from + BOARD_SIZE) % BOARD_SIZE;
     const steps = back ? -((from - p.position + BOARD_SIZE) % BOARD_SIZE) : forward;
     const n = Math.abs(steps);
-    const speed = n <= 12 ? 130 : Math.max(45, 1400 / n);
+    const speed = n <= 12 ? 230 : Math.max(60, 2600 / n);   // más pausado: se ve cada salto
     if (animTimers[p.id]) clearTimeout(animTimers[p.id]);
     let i = 0;
     let pos = from;
     const target = p.position;
+    const isCurrent = next.players[next.currentPlayerIndex]?.id === p.id;
+    if (isCurrent) useStore.setState({ moving: p.id });
     const tick = () => {
       i++;
       pos = (pos + Math.sign(steps) + BOARD_SIZE) % BOARD_SIZE;
       useStore.setState(s => ({ displayPos: { ...s.displayPos, [p.id]: pos } }));
       if (i < n && pos !== target) { sfx.hop(); animTimers[p.id] = setTimeout(tick, speed); }
-      else { useStore.setState(s => ({ displayPos: { ...s.displayPos, [p.id]: target } })); delete animTimers[p.id]; }
+      else {
+        useStore.setState(s => ({ displayPos: { ...s.displayPos, [p.id]: target }, moving: s.moving === p.id ? null : s.moving }));
+        delete animTimers[p.id];
+      }
     };
-    animTimers[p.id] = setTimeout(tick, 350); // deja ver los dados primero
+    animTimers[p.id] = setTimeout(tick, 650); // deja ver los dados primero
+    // red de seguridad: nunca dejar la partida "avanzando" para siempre
+    setTimeout(() => useStore.setState(s => (s.moving === p.id && !animTimers[p.id] ? { moving: null } : {})), 650 + n * speed + 2500);
   }
-  if (Object.keys(patchNow).length) useStore.setState(s => ({ displayPos: { ...s.displayPos, ...patchNow } }));
+  if (Object.keys(patchNow).length) useStore.setState(s => ({ displayPos: { ...s.displayPos, ...patchNow }, moving: s.moving && patchNow[s.moving] !== undefined ? null : s.moving }));
 }
 
 // Acceso para pruebas automatizadas
@@ -373,6 +390,9 @@ socket.on('state:update', (payload: RoomView & { events: GameEvent[] }) => {
   useStore.getState().applyView(payload, payload.events);
 });
 socket.on('chat:message', (msg: ChatMessage) => useStore.getState().addChat(msg));
+socket.on('lootbox:open', (d: { playerId: string }) => {
+  useStore.setState(s => (s.lootbox && s.lootbox.playerId === d.playerId && !s.lootbox.openedAt ? { lootbox: { ...s.lootbox, openedAt: Date.now() } } : {}));
+});
 socket.on('trade:drafting', (d: { fromId: string; toId: string | null; at: number }) => {
   useStore.setState(s => {
     const next = { ...s.drafting };
@@ -381,6 +401,11 @@ socket.on('trade:drafting', (d: { fromId: string; toId: string | null; at: numbe
   });
 });
 
+/** Reloj del servidor estimado (para cuentas regresivas iguales en todos los clientes). */
+export const serverNow = () => Date.now() + useStore.getState().clockOffset;
+
 // Selectores útiles
 export const useMe = () => useStore(s => s.state?.players.find(p => p.id === s.playerId) ?? null);
+/** ¿La ficha del jugador actual todavía está recorriendo el tablero? */
+export const useMoving = () => useStore(s => s.moving !== null);
 export const useIsMyTurn = () => useStore(s => !!s.state && s.state.phase === 'PLAYING' && s.state.players[s.state.currentPlayerIndex]?.id === s.playerId);

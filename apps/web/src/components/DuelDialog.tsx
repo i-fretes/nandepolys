@@ -129,17 +129,40 @@ function Escopeta({ d, meId }: { d: DuelState; meId: string | null }) {
   const evs = useStore(s => s.duelEvents);
   const lastShot = [...evs].reverse().find(e => e.type === 'duel_round' && e.data.live !== undefined);
   const [flash, setFlash] = useState<null | 'live' | 'blank'>(null);
-  useEffect(() => { if (lastShot) { setFlash(lastShot.data.live ? 'live' : 'blank'); const t = setTimeout(() => setFlash(null), 900); return () => clearTimeout(t); } }, [lastShot?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (lastShot) { setFlash(lastShot.data.live ? 'live' : 'blank'); const t = setTimeout(() => setFlash(null), 1400); return () => clearTimeout(t); } }, [lastShot?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const shoot = (target: 'self' | 'opp') => act({ type: 'DUEL_MOVE', move: { kind: 'shoot', target } });
   const useItem = (item: string) => act({ type: 'DUEL_MOVE', move: { kind: 'item', item } });
   const players = [d.fromId, d.toId].map(id => state.players.find(p => p.id === id)!);
   const canPlay = myTurn && meId && (meId === d.fromId || meId === d.toId);
+  const [showHelp, setShowHelp] = useState(true);
+  const history = evs.filter(e => e.type === 'duel_round' && e.data.live !== undefined && (e.data.round === undefined || true)).slice(-12);
   return (
-    <div className={`escopeta ${flash ? `flash-${flash}` : ''}`}>
+    <div className={`escopeta relative ${flash ? `flash-${flash}` : ''}`}>
+      {flash && lastShot && (
+        <div className={`shot-splash ${flash}`}>
+          <div className="text-6xl">{flash === 'live' ? '💥' : '🔘'}</div>
+          <div className="text-4xl font-black">{flash === 'live' ? '¡BOOM!' : 'clic…'}</div>
+          <div className="text-sm font-semibold">{flash === 'live' ? `Era de verdad: ${state.players.find(p => p.id === (lastShot.data.target as string))?.name} pierde una vida` : 'De fogueo. Nadie sale herido.'}</div>
+        </div>
+      )}
+      <div className={`mb-2 rounded-xl px-3 py-2 text-center text-sm font-black ${myTurn ? 'bg-yellow-300 text-black' : 'bg-white/10 text-white'}`}>
+        {myTurn ? '👉 ES TU TURNO: elegí a quién disparar (o usá un ítem)' : `Turno de ${turnP?.name}…`}
+      </div>
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-white">🔫 Escopeta · Ronda {data.round ?? 1}</h2>
-        <div className="text-sm font-bold text-emerald-300">Pozo: {money(d.amount)}</div>
+        <div className="flex items-center gap-2">
+          <button className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold text-white" onClick={() => setShowHelp(v => !v)}>{showHelp ? 'Ocultar ayuda' : '¿Cómo se juega?'}</button>
+          <div className="text-sm font-bold text-emerald-300">Pozo: {money(d.amount)}</div>
+        </div>
       </div>
+      {showHelp && (
+        <div className="mt-2 rounded-xl bg-white/10 p-3 text-xs leading-relaxed text-white/90">
+          <b>Cómo se juega:</b> la escopeta se carga con cartuchos <b className="text-red-300">de verdad</b> y <b className="text-sky-300">de fogueo</b> mezclados al azar; se anuncia cuántos hay de cada uno, no el orden.
+          En tu turno elegís: <b>dispararte</b> (si sale de fogueo no pasa nada y <u>seguís vos</u>; si es de verdad perdés una vida) o <b>disparar al rival</b> (si es de verdad pierde una vida; en cualquier caso <u>pasa el turno</u>).
+          Cada cartucho usado se descuenta del conteo: si quedan más de verdad, dispará al rival; si quedan más de fogueo, dispararte te da otro turno. Pierde el que llega a 0 vidas ❤️.
+          Ítems: 🔍 <b>lupa</b> = ves el próximo cartucho · 🍺 <b>cerveza</b> = expulsás el próximo cartucho sin disparar · ⛓️ <b>esposas</b> = el rival pierde su próximo turno.
+        </div>
+      )}
       <div className="mt-3 grid grid-cols-2 gap-3">
         {players.map(p => (
           <div key={p.id} className={`rounded-xl p-3 ${d.turn === p.id ? 'bg-white/15 ring-2 ring-yellow-300' : 'bg-white/5'}`}>
@@ -151,21 +174,27 @@ function Escopeta({ d, meId }: { d: DuelState; meId: string | null }) {
       </div>
       <div className="mt-3 flex flex-col items-center rounded-xl bg-black/30 p-3 text-white">
         <div className="text-xs font-bold uppercase tracking-widest text-white/60">Cartuchos en la escopeta</div>
-        <div className="mt-1 flex gap-1 text-2xl">{Array.from({ length: (data.shellsLeft as number) ?? 0 }, (_, i) => <span key={i} className="shell">🟥</span>)}</div>
-        <div className="mt-1 text-sm"><b className="text-red-400">{known.live}</b> de verdad · <b className="text-sky-300">{known.blank}</b> de fogueo</div>
+        <div className="mt-1 flex gap-1 text-2xl">{Array.from({ length: (data.shellsLeft as number) ?? 0 }, (_, i) => <span key={i} className="shell" title="Cartucho: no se sabe si es de verdad o de fogueo">🔘</span>)}</div>
+        <div className="mt-1 text-sm">Quedan <b className="text-red-400">{known.live} de verdad 💥</b> y <b className="text-sky-300">{known.blank} de fogueo</b>, en orden desconocido</div>
         {meId && peek[meId] && <div className="mt-2 rounded-lg bg-yellow-300 px-3 py-1 text-sm font-black text-black">🔍 El próximo es {peek[meId] === 'live' ? 'DE VERDAD 💥' : 'de fogueo'}</div>}
         {lastShot && <div className={`mt-2 text-sm font-bold ${lastShot.data.live ? 'text-red-400' : 'text-sky-300'}`}>{lastShot.text}</div>}
+        {history.length > 0 && (
+          <div className="mt-2 flex items-center gap-1 text-xs text-white/60">
+            <span className="mr-1">Cartuchos ya disparados:</span>
+            {history.map(h => <span key={h.id} className={`rounded px-1.5 py-0.5 text-[11px] font-black ${h.data.live ? 'bg-red-600 text-white' : 'bg-sky-700 text-white'}`} title={h.text}>{h.data.live ? '💥' : '○'}</span>)}
+          </div>
+        )}
       </div>
       {canPlay ? (
         <div className="mt-3">
           <div className="text-center text-sm font-bold text-yellow-300">¡Te toca, {me?.name}!</div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <button data-shoot-self className="duel-btn self" onClick={() => { shoot('self'); sfx.tick(); }}>🔫 Dispararme<span className="text-xs font-semibold opacity-80">si es de fogueo, sigo yo</span></button>
-            <button data-shoot-opp className="duel-btn opp" onClick={() => { shoot('opp'); sfx.tick(); }}>🎯 Disparar a {opp?.name}<span className="text-xs font-semibold opacity-80">pasa el turno</span></button>
+            <button data-shoot-self className="duel-btn self" onClick={() => { shoot('self'); sfx.tick(); }}>🔫 Dispararme<span className="text-xs font-semibold opacity-80">fogueo → sigo yo · verdad → pierdo ❤️</span></button>
+            <button data-shoot-opp className="duel-btn opp" onClick={() => { shoot('opp'); sfx.tick(); }}>🎯 Disparar a {opp?.name}<span className="text-xs font-semibold opacity-80">verdad → pierde ❤️ · siempre pasa el turno</span></button>
           </div>
           {(items[meId!] ?? []).length > 0 && (
             <div className="mt-2 flex flex-wrap justify-center gap-2">
-              {(items[meId!] ?? []).map((it, i) => <button key={i} className="btn-ghost btn-sm" onClick={() => useItem(it)} title={ITEM[it]?.desc}>{ITEM[it]?.icon} {ITEM[it]?.name}</button>)}
+              {(items[meId!] ?? []).map((it, i) => <button key={i} className="btn-ghost btn-sm flex-col !items-start !gap-0" onClick={() => useItem(it)}><span>{ITEM[it]?.icon} {ITEM[it]?.name}</span><span className="text-[10px] font-normal text-ink/60">{ITEM[it]?.desc}</span></button>)}
             </div>
           )}
         </div>

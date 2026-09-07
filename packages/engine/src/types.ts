@@ -169,6 +169,8 @@ export interface ChallengeState {
   returnPhase: TurnPhase;
   data: {
     rolls?: Record<string, [number, number]>;
+    lastRolls?: Record<string, [number, number]>;
+    round?: number;
     rounds?: { a: PptChoice; b: PptChoice; winner: string | null }[];
     score?: Record<string, number>;
     chosen?: string[];                       // ppt: quiénes ya eligieron esta ronda (sin revelar qué)

@@ -1,0 +1,51 @@
+// Captura los dados 3D dentro del diálogo del Casino (bug visual de v1.3.0) en pleno giro y al frenar.
+import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
+const BASE = process.argv[2] ?? 'http://localhost:8080'; const OUT = process.argv[3] ?? 'e2e/dice'; mkdirSync(OUT, { recursive: true });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined });
+const mk = async () => { const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage(); p.on('dialog', d => d.accept()); return p; };
+const dbg = (p, data) => p.evaluate(d => new Promise(res => window.__nandepoly.socket.emit('debug:set', d, res)), data);
+const esc = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const click = (p, text) => p.locator('button:not([disabled])', { hasText: new RegExp('(^|\\s)' + esc(text)) }).first().click({ timeout: 8000, force: true });
+const a = await mk(), b = await mk();
+await a.goto(BASE); await a.fill('input[placeholder="Ej: Ivan"]', 'Ivan'); await a.click('button:has-text("Crear sala")'); await a.waitForURL(/\/sala\//);
+const code = a.url().split('/sala/')[1];
+await b.goto(`${BASE}/sala/${code}`); await b.waitForSelector('button:has-text("Entrar a la sala")'); await b.fill('input[maxlength="20"]', 'Lucía'); await b.click('button[title="Chipa"]'); await b.click('button:has-text("Entrar a la sala")');
+await a.waitForSelector('text=Jugadores (2/6)');
+for (const label of ['Casinos', 'Desafíos entre jugadores']) { const cb = a.locator('label', { hasText: label }).locator('input[type=checkbox]'); await cb.click(); await a.waitForFunction(el => el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 }); }
+await a.click('button:has-text("Empezar partida")'); await a.waitForSelector('.board');
+const s = await a.evaluate(() => window.__nandepoly.store.getState().state);
+const meA = await a.evaluate(() => window.__nandepoly.store.getState().playerId);
+const cur = s.players[s.currentPlayerIndex].id === meA ? a : b; const other = cur === a ? b : a;
+// Casino → quiniela
+await dbg(cur, { position: 36, dice: [1, 2] });
+await click(cur, 'Tirar dados');
+await cur.waitForSelector('text=Casino', { timeout: 8000 });
+await cur.locator('button', { hasText: 'Quiniela' }).first().click({ force: true });
+await cur.waitForTimeout(300);
+await cur.locator('button', { hasText: /^7/ }).first().click({ force: true });
+await cur.locator('button:has-text("200 mil")').first().click({ force: true }).catch(() => {});
+await click(cur, 'Apostar');
+await cur.waitForTimeout(350);
+await cur.screenshot({ path: `${OUT}/casino-dados-girando.png` });
+await cur.waitForTimeout(1500);
+await cur.screenshot({ path: `${OUT}/casino-dados-quietos.png` });
+await click(cur, 'Salir del Casino');
+await cur.waitForTimeout(300);
+await (await cur.locator('button', { hasText: /Terminar turno/ }).count() ? click(cur, 'Terminar turno') : Promise.resolve());
+// Desafío de dados
+await other.waitForSelector('button:has-text("Desafiar"):not([disabled])', { timeout: 8000 });
+await click(other, 'Desafiar');
+await other.waitForSelector('text=Puro azar');
+await click(other, 'Desafiar por');
+await cur.waitForSelector('button:has-text("Acepto")', { timeout: 8000 });
+await click(cur, '¡Acepto!');
+await cur.waitForSelector('[data-roll-dados]', { timeout: 5000 });
+await cur.screenshot({ path: `${OUT}/dados-desafio-antes.png` });
+await cur.locator('[data-roll-dados]').click({ force: true });
+await cur.waitForTimeout(400);
+await cur.screenshot({ path: `${OUT}/dados-desafio-uno-tiro.png` });
+await other.locator('[data-roll-dados]').click({ force: true });
+await cur.waitForTimeout(1300);
+await cur.screenshot({ path: `${OUT}/dados-desafio-resultado.png` });
+await browser.close(); console.log('OK');

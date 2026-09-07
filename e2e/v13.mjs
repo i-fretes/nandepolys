@@ -79,9 +79,12 @@ let cur = await curPage();
 await dbg(cur, { position: 42, dice: [1, 2] });
 await click(cur, 'Tirar dados');
 await a.waitForSelector('text=Caja sorpresa', { timeout: 8000 });
-await a.waitForTimeout(2500);
+await cur.waitForSelector('[data-open-box]', { timeout: 5000 });
+await a.screenshot({ path: `${OUT}/lootbox-cerrada.png` });
+await cur.locator('[data-open-box]').click({ force: true });
+await a.waitForTimeout(1800);
 await a.screenshot({ path: `${OUT}/lootbox-girando.png` });
-await a.waitForTimeout(2500);
+await a.waitForTimeout(2300);
 await a.screenshot({ path: `${OUT}/lootbox-premio.png` });
 const s1 = await st(a);
 ok(!!s1.lastLootbox, `caja sorpresa abierta: ${s1.lastLootbox?.prize}`);
@@ -108,6 +111,8 @@ await a.waitForFunction(() => window.__nandepoly.store.getState().state?.arena?.
 let game = (await st(a)).arena.game;
 log('juego de la Arena:', game);
 await a.waitForTimeout(800);
+await a.screenshot({ path: `${OUT}/arena-cuenta-regresiva.png` });
+await a.waitForTimeout(3000);
 await a.screenshot({ path: `${OUT}/arena-${game}.png` });
 // interacción genérica según el juego
 const playArena = async () => {
@@ -125,8 +130,8 @@ const playArena = async () => {
           case 'barra': await p.locator('[data-stop]').click({ force: true, timeout: 800 }); break;
           case 'cuantos': if (d.answers?.[id] === undefined) { await p.fill('[data-cuantos]', String(Math.floor(Math.random() * 500))); await p.keyboard.press('Enter'); } break;
           case 'bomba': if (d.turn === id) { await p.fill('[data-bomb]', `${d.syllable}mate`); await p.keyboard.press('Enter'); } break;
-          case 'sapos': await p.locator('[data-sapo-l]').dispatchEvent('pointerdown'); await p.locator('[data-sapo-r]').dispatchEvent('pointerdown'); break;
-          case 'oeste': if (d.go) { const t = s.arena.alive.find(x => x !== id); if (t) await p.locator(`[data-shoot="${t}"]`).click({ force: true, timeout: 800 }); } break;
+          case 'sapos': { const lane = d.lane?.[id] ?? 1; const row = Math.floor(2 * ((Date.now() - d.__ignore) / 1000)) ; void row; const tr = d.track ?? []; const my = Math.floor(((s.arena.startedAt ? (Date.now() - s.arena.startedAt) : 0) / 1000) * 2); const next = tr[Math.min(tr.length - 1, my + 1)]; if (next === lane) await p.locator(lane === 0 ? '[data-sapo-r]' : '[data-sapo-l]').dispatchEvent('pointerdown'); break; }
+          case 'oeste': if (d.go) await p.locator('[data-fire]:not([disabled])').dispatchEvent('pointerdown'); break;
           case 'rayo': if (d.picks?.[id] === undefined) await p.locator(`[data-cell="${Math.floor(Math.random() * 9)}"]`).click({ force: true, timeout: 800 }); break;
           case 'penales': await p.locator('[data-kick]').dispatchEvent('pointerdown'); break;
           case 'globos': if (d.turn === id) await p.locator('[data-balloon]:not([disabled])').first().click({ force: true, timeout: 800 }); break;

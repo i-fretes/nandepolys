@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CARRETA_PAYOUT, DOUBLE_MAX_STEPS, QUINIELA_PAYOUT } from '@nandepoly/engine';
-import { useStore } from '../store';
+import { useMoving, useStore } from '../store';
 import { money } from '../format';
 import { sfx } from '../sound';
 import Modal from './Modal';
@@ -21,7 +21,8 @@ export default function CasinoDialog() {
   const act = useStore(s => s.act);
   const last = useStore(s => s.lastCasino);
   const c = state.casino;
-  const open = state.turnPhase === 'CASINO' && !!c;
+  const moving = useMoving();
+  const open = state.turnPhase === 'CASINO' && !!c && !moving;
   const mine = !!c && c.playerId === me;
   const player = c ? state.players.find(p => p.id === c.playerId) : null;
   const [game, setGame] = useState<Game>('ruleta');

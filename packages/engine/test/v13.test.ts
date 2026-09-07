@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ARENA_REWARDS, EVENTS, LOOTBOX, MISSIONS, applyAction, applyTruco, envidoValue, hasFlor, newTruco, power, rentFor, toClientState,
+  ARENA_REWARDS, EVENTS, LOOTBOX, MISSIONS, applyAction, applyTruco, envidoValue, hasFlor, newTruco, power, rentFor, sapoPos, toClientState,
   type GameState,
 } from '../src';
 import { act, cur, give, makeGame, seedFor, setPos, withDice } from './helpers';
@@ -140,18 +140,25 @@ describe('La Arena', () => {
     for (const id of ids) s = applyAction(s, { type: 'ARENA_VOTE', playerId: id, option: 0 }).state;
     s = applyAction(s, { type: 'ARENA_START', playerId: 'server', now: 1000 }).state;
     expect(s.arena!.stage).toBe('play');
+    expect(() => applyAction(s, { type: 'ARENA_MOVE', playerId: ids[0], now: 1500, payload: { answer: 0 } })).toThrow('cuenta regresiva');
     expect(s.arena!.game).toBe('trivia');
     const cs = toClientState(s, ids[0]);
     expect(cs.arena!.secret).toEqual({});
     // hacemos que el primero acierte siempre y los demás fallen
     const cash0 = s.players.find(p => p.id === ids[0])!.cash;
     let guard = 0;
+    let now = 5000;
     while (s.arena && s.arena.stage === 'play' && guard++ < 50) {
       const answer = s.arena.secret.answer as number;
       for (const id of ids) {
         if (!s.arena || s.arena.stage !== 'play') break;
-        s = applyAction(s, { type: 'ARENA_MOVE', playerId: id, now: 2000, payload: { answer: id === ids[0] ? answer : (answer + 1) % 4 } }).state;
+        s = applyAction(s, { type: 'ARENA_MOVE', playerId: id, now, payload: { answer: id === ids[0] ? answer : (answer + 1) % 4 } }).state;
       }
+      // fase de revelación: se ve la respuesta y lo que puso cada uno; el tick avanza a la siguiente pregunta
+      expect(s.arena!.data.reveal).toBe(answer);
+      expect((s.arena!.data.answered as Record<string, number>)[ids[1]]).toBe((answer + 1) % 4);
+      now += 4000;
+      s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now }).state;
     }
     expect(s.arena!.stage).toBe('done');
     expect(s.arena!.ranking![0]).toBe(ids[0]);
@@ -265,7 +272,7 @@ describe('truco (módulo puro)', () => {
     expect(hasFlor([{ r: 1, s: 'oro' }, { r: 5, s: 'oro' }, { r: 2, s: 'copa' }])).toBe(false);
   });
   it('una partida completa al azar termina con alguien en 15', () => {
-    let st = newTruco('A', 'B', 7);
+    let st = newTruco('A', 'B', 7, 15, 99);
     let rs = 99;
     const rnd = () => { rs = (rs * 1103515245 + 12345) % 2147483648; return rs / 2147483648; };
     let guard = 0;
@@ -292,5 +299,115 @@ describe('estado del cliente', () => {
     expect(cs.decks).toBeUndefined();
     expect(cs.seed).toBeUndefined();
     expect(cs.deckCounts).toEqual({ chance: 16, community: 16 });
+  });
+});
+
+describe('v1.3.2', () => {
+  it('carrera de sapos: avanzan solos, el charco elimina y el ranking premia a quien llega', () => {
+    let s = makeGame(3, { arena: true }, 8);
+    const a = cur(s).id;
+    s = act(withDice(setPos(s, a, 3), [1, 2]), { type: 'ROLL', playerId: a }).state;
+    const ids = s.arena!.players;
+    s.arena!.options[0] = 'sapos';
+    for (const id of ids) s = applyAction(s, { type: 'ARENA_VOTE', playerId: id, option: 0 }).state;
+    s = applyAction(s, { type: 'ARENA_START', playerId: 'server', now: 1000 }).state;
+    const d = s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(d.track).toHaveLength(60);
+    expect((d.track as number[]).every((v, i, arr) => v < 0 || i === 0 || arr[i - 1] < 0)).toBe(true); // nunca dos charcos seguidos
+    const start = s.arena!.startedAt!;
+    // jugador 0 se queda en su carril hasta el primer charco de ese carril → se cae
+    const firstPuddleRow = (d.track as number[]).findIndex(v => v === 1);
+    expect(firstPuddleRow).toBeGreaterThan(0);
+    // jugadores 1 y 2 esquivan siempre: se mueven al carril libre cuando la próxima fila tiene charco
+    let now = start;
+    let guard = 0;
+    while (s.arena && s.arena.stage === 'play' && guard++ < 400) {
+      now += 100;
+      const dd = s.arena.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const row = Math.floor(sapoPos(now - start));
+      for (const id of ids.slice(1)) {
+        const nextRow = Math.min(59, row + 1);
+        const bad = (dd.track as number[])[nextRow];
+        const here = (dd.track as number[])[Math.min(59, row)];
+        const lane = (dd.lane as Record<string, number>)[id];
+        if (bad === lane || here === lane) {
+          const safe = [0, 1, 2].find(l => l !== bad && l !== here)!;
+          try { s = applyAction(s, { type: 'ARENA_MOVE', playerId: id, now, payload: { lane: safe } }).state; } catch { /* ya terminó */ }
+        }
+      }
+      if (s.arena?.stage === 'play') s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now }).state;
+    }
+    expect(s.arena!.stage).toBe('done');
+    const dd = s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(dd.out[ids[0]]).toBe(firstPuddleRow);
+    expect(dd.finished).toEqual(expect.arrayContaining([ids[1], ids[2]]));
+    expect(s.arena!.ranking!.slice(0, 2)).toEqual(expect.arrayContaining([ids[1], ids[2]]));
+    expect(s.arena!.ranking![2]).toBe(ids[0]);
+    expect(now - start).toBeLessThan(25000);
+  });
+
+  it('el truco del duelo se define en 2 manos (empate: una más)', () => {
+    let st = newTruco('A', 'B', 3, 15, 2);
+    let rs = 7;
+    const rnd = () => { rs = (rs * 1103515245 + 12345) % 2147483648; return rs / 2147483648; };
+    let guard = 0;
+    while (!st.pub.finished && guard++ < 2000) {
+      const p = st.pub;
+      try {
+        if (p.pending) { st = applyTruco(st, p.pending.by === 'A' ? 'B' : 'A', { kind: 'call', what: 'quiero' }); continue; }
+        st = applyTruco(st, p.turn, { kind: 'play', card: Math.floor(rnd() * st.sec.hands[p.turn].length) });
+      } catch { /* ilegal */ }
+    }
+    expect(st.pub.finished).toBe(true);
+    expect(st.pub.hand).toBeGreaterThanOrEqual(2);
+    expect(st.pub.scores[st.pub.winner!]).toBeGreaterThan(st.pub.scores[st.pub.winner === 'A' ? 'B' : 'A']);
+    expect(st.pub.hand).toBeLessThanOrEqual(4);
+  });
+
+  it('en la Arena, el que tiene menos efectivo cobra doble si gana (también de a dos)', () => {
+    let s = makeGame(2, { arena: true }, 4);
+    const a = cur(s).id, b = s.players.find(p => p.id !== a)!.id;
+    s.players.find(p => p.id === a)!.cash = 900; // el más pobre
+    s = act(withDice(setPos(s, a, 3), [1, 2]), { type: 'ROLL', playerId: a }).state;
+    s.arena!.options[0] = 'cuantos';
+    for (const id of [a, b]) s = applyAction(s, { type: 'ARENA_VOTE', playerId: id, option: 0 }).state;
+    s = applyAction(s, { type: 'ARENA_START', playerId: 'server', now: 0 }).state;
+    const answer = s.arena!.secret.answer as number;
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: a, now: 5000, payload: { value: answer } }).state;
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: b, now: 5000, payload: { value: answer + 50 } }).state;
+    expect(s.arena!.stage).toBe('done');
+    expect(s.arena!.rewards![a]).toBe(ARENA_REWARDS[0] * 2);
+    expect(s.arena!.data.doubled).toBe(a);
+    expect(s.arena!.data.answer).toBe(answer);
+  });
+
+  it('los eventos instantáneos mueven la plata: aguinaldo +100 a todos y Control de la SET −10 % al más rico', () => {
+    let seenAguinaldo = false, seenSet = false;
+    for (let seed = 1; seed <= 60 && !(seenAguinaldo && seenSet); seed++) {
+      let s = makeGame(3, { events: true }, seed);
+      for (let i = 0; i < 40 && s.phase === 'PLAYING'; i++) {
+        const before = s.players.map(p => p.cash);
+        const mover = s.players[s.currentPlayerIndex].id;
+        const r = applyAction(s, { type: 'FORCE_END_TURN', playerId: s.hostId });
+        const spin = r.events.find(e => e.type === 'event_spin');
+        // lo que recibió cada uno por alquileres en la misma acción (el que movió puede haber pagado)
+        const rentTo = (id: string) => r.events.filter(e => e.type === 'rent' && e.data?.to === id).reduce((n, e) => n + (e.data!.amount as number), 0);
+        if (spin?.data?.eventId === 'aguinaldo') {
+          r.state.players.forEach((p, i) => { if (!p.bankrupt && p.id !== mover) expect(p.cash).toBe(before[i] + 100 + rentTo(p.id)); });
+          seenAguinaldo = true;
+        }
+        if (spin?.data?.eventId === 'control_set') {
+          const ev = r.events.find(e => e.type === 'expense' && e.text.startsWith('Control de la SET'))!;
+          expect(ev).toBeTruthy();
+          const idx = r.state.players.findIndex(p => p.id === ev.playerId);
+          const cashAtSpin = before[idx] + (ev.playerId !== mover ? rentTo(ev.playerId!) : 0);
+          if (ev.playerId !== mover) expect(r.state.players[idx].cash).toBe(cashAtSpin - (ev.data!.amount as number));
+          expect(ev.data!.amount).toBeGreaterThan(0);
+          seenSet = true;
+        }
+        s = r.state;
+      }
+    }
+    expect(seenAguinaldo && seenSet).toBe(true);
   });
 });

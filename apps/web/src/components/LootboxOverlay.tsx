@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LOOTBOX } from '@nandepoly/engine';
 import { useStore } from '../store';
-import { sfx } from '../sound';
+import { epic, sfx } from '../sound';
 import { tokenEmoji } from '../format';
 
 const CELL = 96;      // ancho de cada premio en el carrete (px incl. gap)
 const CELLS = 40;     // celdas totales del carrete
+const WIN = 33;       // celda donde frena
+const SPIN_MS = 3500; // duración del giro
 
 const ICON: Record<string, string> = {
   g100: '💵', g150: '💵', g200: '💰', g250: '💰', g300: '💎', g500: '👑', casa: '🏠', carcel: '🎟️', tirada: '🎲', multa: '🚔',
@@ -15,16 +17,22 @@ const TONE: Record<string, string> = {
   g100: 'lb-gray', g150: 'lb-gray', g200: 'lb-blue', g250: 'lb-blue', g300: 'lb-purple', g500: 'lb-gold', casa: 'lb-purple', carcel: 'lb-blue', tirada: 'lb-purple', multa: 'lb-red',
 };
 
-/** Caja sorpresa al pasar por Salida: carrete estilo "skin club" que frena en el premio. */
+/**
+ * Caja sorpresa al pasar por Salida. El dueño toca "Abrir caja"; en ese momento, en todas las pantallas,
+ * suena la fanfarria y el carrete gira 3,5 s hasta frenar en el premio (estilo "skin club").
+ */
 export default function LootboxOverlay() {
   const box = useStore(s => s.lootbox);
   const setLootbox = useStore(s => s.setLootbox);
+  const openLootbox = useStore(s => s.openLootbox);
   const state = useStore(s => s.state);
-  const [phase, setPhase] = useState<'spin' | 'done'>('spin');
+  const meId = useStore(s => s.playerId);
+  const [phase, setPhase] = useState<'closed' | 'spin' | 'done'>('closed');
   const stripRef = useRef<HTMLDivElement>(null);
   const player = state?.players.find(p => p.id === box?.playerId);
+  const mine = box?.playerId === meId;
 
-  // Carrete: premios al azar ponderados; el ganador va en la celda 33
+  // Carrete: premios al azar ponderados; el ganador va en la celda WIN
   const cells = useMemo(() => {
     if (!box) return [];
     const weights = LOOTBOX.map(l => l.weight);
@@ -37,34 +45,49 @@ export default function LootboxOverlay() {
       for (let k = 0; k < weights.length; k++) { r -= weights[k]; if (r < 0) { idx = k; break; } }
       out.push(idx);
     }
-    out[33] = box.index;
+    out[WIN] = box.index;
     return out;
   }, [box]);
 
+  // Caja cerrada: si el dueño no la abre en 12 s, se abre sola
   useEffect(() => {
     if (!box) return;
-    setPhase('spin');
-    const strip = stripRef.current;
-    if (!strip) return;
-    strip.style.transition = 'none';
-    strip.style.transform = 'translateX(0px)';
-    const jitter = (Math.random() - 0.5) * (CELL * 0.6);
-    const target = -(33 * CELL - (strip.parentElement!.clientWidth / 2 - CELL / 2)) + jitter;
-    const t0 = requestAnimationFrame(() => {
-      strip.style.transition = 'transform 4.2s cubic-bezier(.08,.82,.17,1)';
-      strip.style.transform = `translateX(${target}px)`;
-    });
-    // tics que se van espaciando
-    let n = 0; const ticks: ReturnType<typeof setTimeout>[] = [];
-    const schedule = (d: number) => { if (d > 4100) return; ticks.push(setTimeout(() => { sfx.tick(); n++; schedule(d + 40 + n * n * 1.6); }, Math.max(0, d - (ticks.length ? 0 : 0)))); };
-    schedule(60);
-    const done = setTimeout(() => {
-      setPhase('done');
-      if (box.prize === 'g500' || box.prize === 'casa') sfx.bigWin(); else if (box.amount < 0) sfx.lose(); else sfx.coin();
-    }, 4300);
-    const close = setTimeout(() => setLootbox(null), 8200);
-    return () => { cancelAnimationFrame(t0); ticks.forEach(clearTimeout); clearTimeout(done); clearTimeout(close); };
-  }, [box, setLootbox]);
+    setPhase('closed');
+    if (box.openedAt) return;
+    const t = setTimeout(() => useStore.setState(s => (s.lootbox && !s.lootbox.openedAt ? { lootbox: { ...s.lootbox, openedAt: Date.now() } } : {})), 12000);
+    return () => clearTimeout(t);
+  }, [box?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apertura: fanfarria + giro
+  useEffect(() => {
+    if (!box?.openedAt) return;
+    const delay = Math.max(0, box.openedAt - Date.now());
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    const start = setTimeout(() => {
+      setPhase('spin');
+      epic();
+      const strip = stripRef.current;
+      if (strip) {
+        strip.style.transition = 'none';
+        strip.style.transform = 'translateX(0px)';
+        const jitter = (Math.random() - 0.5) * (CELL * 0.6);
+        const target = -(WIN * CELL - (strip.parentElement!.clientWidth / 2 - CELL / 2)) + jitter;
+        requestAnimationFrame(() => {
+          strip.style.transition = `transform ${SPIN_MS}ms cubic-bezier(.08,.82,.17,1)`;
+          strip.style.transform = `translateX(${target}px)`;
+        });
+      }
+      let n = 0;
+      const schedule = (d: number) => { if (d > SPIN_MS - 100) return; timers.push(setTimeout(() => { sfx.tick(); n++; schedule(d + 40 + n * n * 1.9); }, d)); };
+      schedule(60);
+      timers.push(setTimeout(() => {
+        setPhase('done');
+        if (box.prize === 'g500' || box.prize === 'casa') sfx.bigWin(); else if (box.amount < 0) sfx.lose(); else sfx.coin();
+      }, SPIN_MS + 100));
+      timers.push(setTimeout(() => setLootbox(null), SPIN_MS + 4500));
+    }, delay);
+    return () => { clearTimeout(start); timers.forEach(clearTimeout); timers = []; };
+  }, [box?.openedAt, box?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <AnimatePresence>
@@ -75,28 +98,41 @@ export default function LootboxOverlay() {
               {player && <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" style={{ boxShadow: `0 0 0 3px ${player.color}` }}>{tokenEmoji(player.token)}</span>}
               <div className="text-lg font-black tracking-tight">🎁 {player?.name ?? ''} pasó por Salida: ¡Caja sorpresa!</div>
             </div>
-            <div className="lb-window">
-              <div className="lb-marker" />
-              <div ref={stripRef} className="lb-strip">
-                {cells.map((idx, i) => {
-                  const l = LOOTBOX[idx];
-                  return (
-                    <div key={i} className={`lb-cell ${TONE[l.id]} ${phase === 'done' && i === 33 ? 'lb-win' : ''}`}>
-                      <div className="lb-ico">{ICON[l.id]}</div>
-                      <div className="lb-lbl">{l.label.replace('¡', '').replace('!', '').replace('Carta: ', '').replace('Multa de tránsito: ', 'Multa ')}</div>
-                    </div>
-                  );
-                })}
+
+            {phase === 'closed' ? (
+              <div className="flex flex-col items-center py-4">
+                <motion.div className="lb-box" animate={{ rotate: [0, -4, 4, -3, 3, 0], y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 1.6 }}>🎁</motion.div>
+                {mine ? (
+                  <button data-open-box className="btn-primary breathe mt-4 px-10 py-4 text-2xl" onClick={() => { openLootbox(); useStore.setState(s => (s.lootbox && !s.lootbox.openedAt ? { lootbox: { ...s.lootbox, openedAt: Date.now() } } : {})); }}>
+                    🔓 ¡Abrir caja!
+                  </button>
+                ) : <div className="mt-4 animate-pulse text-sm font-semibold text-white/80">Esperando que {player?.name} abra la caja…</div>}
               </div>
-            </div>
+            ) : (
+              <div className="lb-window">
+                <div className="lb-marker" />
+                <div ref={stripRef} className="lb-strip">
+                  {cells.map((idx, i) => {
+                    const l = LOOTBOX[idx];
+                    return (
+                      <div key={i} className={`lb-cell ${TONE[l.id]} ${phase === 'done' && i === WIN ? 'lb-win' : ''}`}>
+                        <div className="lb-ico">{ICON[l.id]}</div>
+                        <div className="lb-lbl">{l.label.replace('¡', '').replace('!', '').replace('Carta: ', '').replace('Multa de tránsito: ', 'Multa ')}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="mt-3 min-h-[44px] text-center">
               {phase === 'done' ? (
                 <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 400, damping: 18 }} className={`inline-block rounded-2xl px-5 py-2 text-xl font-black text-white ${box.amount < 0 ? 'bg-red-600' : box.prize === 'g500' ? 'bg-yellow-500 text-black' : 'bg-emerald-600'}`}>
                   {ICON[box.prize]} {box.label}
                 </motion.div>
-              ) : <div className="text-sm font-semibold text-white/70">Girando…</div>}
+              ) : phase === 'spin' ? <div className="text-sm font-semibold text-white/70">Girando…</div> : null}
             </div>
-            <div className="mt-1 text-center text-[11px] text-white/50">Promedio ≈ ₲ 200.000 · toca para cerrar</div>
+            <div className="mt-1 text-center text-[11px] text-white/50">Promedio ≈ ₲ 200.000{phase === 'done' ? ' · toca para cerrar' : ''}</div>
           </motion.div>
         </motion.div>
       )}

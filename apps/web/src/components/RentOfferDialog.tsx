@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { tile } from '@nandepoly/engine';
-import { useStore } from '../store';
+import { useMoving, useStore } from '../store';
 import { money, tokenEmoji } from '../format';
 import { sfx } from '../sound';
 import Modal from './Modal';
@@ -27,7 +27,8 @@ export default function RentOfferDialog() {
     return () => { clearTimeout(a); clearTimeout(b); };
   }, [lastDon?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const open = (state.turnPhase === 'RENT_OFFER' && !!o) || !!show;
+  const moving = useMoving();
+  const open = ((state.turnPhase === 'RENT_OFFER' && !!o && !moving) || !!show);
   if (!open) return <Modal open={false} />;
   const secs = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore } from '../store';
+import { useMoving, useStore } from '../store';
 import Modal from './Modal';
 
 /** Muestra la carta que acaba de sacar un jugador. */
@@ -7,17 +7,18 @@ export default function CardModal() {
   const cardModal = useStore(s => s.cardModal);
   const setCardModal = useStore(s => s.setCardModal);
   const state = useStore(s => s.state);
+  const moving = useMoving();
 
   useEffect(() => {
-    if (!cardModal) return;
+    if (!cardModal || moving) return;
     const id = setTimeout(() => setCardModal(null), 7000);
     return () => clearTimeout(id);
-  }, [cardModal, setCardModal]);
+  }, [cardModal, setCardModal, moving]);
 
   const who = cardModal ? state?.players.find(p => p.id === cardModal.playerId) : null;
   const isChance = cardModal?.card.deck === 'chance';
   return (
-    <Modal open={!!cardModal} onClose={() => setCardModal(null)} width="max-w-sm">
+    <Modal open={!!cardModal && !moving} onClose={() => setCardModal(null)} width="max-w-sm">
       {cardModal && (
         <div className="flip-scene text-center">
           <div className="text-xs font-semibold uppercase tracking-widest text-ink/50">{who?.name} sacó una carta</div>

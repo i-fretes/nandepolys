@@ -98,7 +98,7 @@ export default function ChallengeDialog() {
       {c.status === 'playing' && c.kind === 'ppt' && <Ppt c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
       {c.status === 'playing' && c.kind === 'trivia' && <Trivia c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
       {c.status === 'playing' && c.kind === 'terere' && <Terere c={c} iAmIn={iAmIn} act={act} />}
-      {c.status === 'playing' && c.kind === 'dados' && <p className="mt-4 text-center">Tirando…</p>}
+      {c.status === 'playing' && c.kind === 'dados' && <Dados c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
     </Modal>
   );
 }
@@ -244,6 +244,51 @@ function Trivia({ c, me, iAmIn, act, name }: { c: NonNullable<ReturnType<typeof 
   );
 }
 
+// --- Duelo de dados ----------------------------------------------------------------------------
+type Ch = NonNullable<ReturnType<typeof useStore.getState>['state']>['challenge'] & object;
+function Dados({ c, me, iAmIn, act, name }: { c: Ch; me: string | null; iAmIn: boolean; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean>; name: (id: string | null | undefined) => string }) {
+  const rolls = (c!.data.rolls ?? {}) as Record<string, [number, number]>;
+  const last = (c!.data.lastRolls ?? {}) as Record<string, [number, number]>;
+  const ids = [c!.fromId, c!.toId!];
+  const mine = me ? rolls[me] : undefined;
+  const [rollingFor, setRollingFor] = useState<Record<string, number>>({});
+  useEffect(() => {
+    // animar el dado del que acaba de tirar
+    for (const id of ids) if (rolls[id] && !rollingFor[id]) { setRollingFor(r => ({ ...r, [id]: Date.now() })); sfx.dice(); }
+    if (!Object.keys(rolls).length && Object.keys(rollingFor).length) setRollingFor({});
+  }, [rolls[ids[0]]?.join(), rolls[ids[1]]?.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const now = Date.now();
+  return (
+    <div className="mt-3">
+      {(c!.data.round ?? 1) > 1 && Object.keys(last).length > 0 && (
+        <div className="mb-2 rounded-lg bg-amber-50 px-3 py-1 text-center text-xs font-bold text-amber-800">
+          Empate {last[ids[0]]?.[0] + last[ids[0]]?.[1]} a {last[ids[1]]?.[0] + last[ids[1]]?.[1]} · ¡se tira de nuevo! (ronda {c!.data.round})
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        {ids.map(id => {
+          const r = rolls[id];
+          const rolling = !!r && now - (rollingFor[id] ?? 0) < 1000;
+          return (
+            <div key={id} className={`rounded-xl p-3 text-center ${r ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+              <div className="text-sm font-bold">{name(id)}</div>
+              <div className="my-2 flex justify-center gap-3">
+                <Die3D value={r?.[0] ?? null} rolling={rolling} size="56px" />
+                <Die3D value={r?.[1] ?? null} rolling={rolling} size="56px" />
+              </div>
+              <div className="text-xl font-black">{r ? r[0] + r[1] : <span className="text-ink/30">?</span>}</div>
+            </div>
+          );
+        })}
+      </div>
+      {iAmIn ? (
+        mine ? <p className="mt-3 text-center text-sm text-ink/60">Ya tiraste. Esperando al rival…</p>
+          : <button data-roll-dados className="btn-primary breathe mt-3 w-full py-4 text-xl" onClick={() => act({ type: 'CHALLENGE_MOVE' })}>🎲 ¡Tirar los dados!</button>
+      ) : <p className="mt-3 text-center text-sm text-ink/60">Mirando el duelo…</p>}
+    </div>
+  );
+}
+
 // --- Tereré caliente --------------------------------------------------------------------------
 function Terere({ c, iAmIn, act }: { c: NonNullable<ReturnType<typeof useStore.getState>['state']>['challenge'] & object; iAmIn: boolean; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean> }) {
   const go = !!c!.data.go;
@@ -253,13 +298,13 @@ function Terere({ c, iAmIn, act }: { c: NonNullable<ReturnType<typeof useStore.g
   return (
     <div className="mt-3">
       {go ? (
-        <div className="terere-go" onPointerDown={tap} role="button">
-          <div className="text-center"><div className="icon">🧉</div><div className="text-3xl font-black">¡TERERÉ! ¡TOCÁ!</div></div>
-        </div>
+        <button data-terere className="terere-go w-full" onPointerDown={tap} disabled={!iAmIn || tapped}>
+          <div className="text-center"><div className="icon">🧉</div><div className="text-3xl font-black">{tapped ? '¡Tocaste!' : '¡TERERÉ! ¡TOCÁ YA!'}</div></div>
+        </button>
       ) : (
-        <div className="terere-wait" onPointerDown={tap} role="button">
-          <div className="text-center"><div className="text-5xl opacity-40">🧉</div><div className="mt-2">Esperá… cuando se ponga verde, tocá.</div><div className="text-xs opacity-60">Si tocás antes, perdés.</div></div>
-        </div>
+        <button data-terere className="terere-wait w-full" onPointerDown={tap} disabled={!iAmIn || tapped}>
+          <div className="text-center"><div className="text-5xl opacity-40">🧉</div><div className="mt-2">Esperá… cuando se ponga VERDE, tocá lo más rápido que puedas.</div><div className="text-xs opacity-60">Si tocás antes, perdés.</div></div>
+        </button>
       )}
       {!iAmIn && <p className="mt-2 text-center text-sm text-ink/60">Mirando el duelo de reflejos…</p>}
     </div>

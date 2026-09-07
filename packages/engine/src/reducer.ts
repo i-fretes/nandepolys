@@ -34,6 +34,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   duels: false,
 };
 
+export const ARENA_COUNTDOWN_MS = 3000;   // "3, 2, 1, ¡ya!" antes de cada mini-juego
+export const ARENA_REVEAL_MS = 3500;      // tiempo mostrando la respuesta correcta en la trivia
+export const TRUCO_HANDS = 2;             // el duelo de truco se define en 2 manos (empate: una más)
 export const DUEL_MAX_BET = 500;
 export const DUEL_COWARD_FEE = 50;
 export const LAPS_PER_DUEL_TOKEN = 3;
@@ -1347,18 +1350,10 @@ function beginChallenge(ctx: Ctx) {
   const s = ctx.s;
   const c = s.challenge!;
   switch (c.kind) {
-    case 'dados': {
-      // Se tira hasta que no haya empate
-      for (let i = 0; i < 20; i++) {
-        const a = rollDice(s.seed); s.seed = a.seed;
-        const b = rollDice(a.seed); s.seed = b.seed;
-        c.data.rolls = { [c.fromId]: a.dice, [c.toId!]: b.dice };
-        const sa = a.dice[0] + a.dice[1], sb = b.dice[0] + b.dice[1];
-        if (sa !== sb) return finishChallenge(ctx, sa > sb ? c.fromId : c.toId!, `${sa} contra ${sb}`);
-        emit(ctx, 'challenge_tie', `Empate ${sa} a ${sb}: se tira de nuevo.`, undefined, { rolls: c.data.rolls });
-      }
-      return finishChallenge(ctx, null, 'empate persistente');
-    }
+    case 'dados':
+      // Cada uno tira cuando quiere (botón); con empate se vuelve a tirar
+      c.data.rolls = {}; c.data.round = 1;
+      return;
     case 'ppt':
       c.data.rounds = []; c.data.score = { [c.fromId]: 0, [c.toId!]: 0 }; c.data.chosen = []; c.secret.choices = {};
       return;
@@ -1392,6 +1387,19 @@ function challengeMove(ctx: Ctx, playerId: string, choice?: PptChoice, answer?: 
   const other = playerId === c.fromId ? c.toId! : c.fromId;
 
   switch (c.kind) {
+    case 'dados': {
+      const rolls = c.data.rolls as Record<string, [number, number]>;
+      if (rolls[playerId]) throw new RuleError('Ya tiraste. Esperá al rival.');
+      const r = rollDice(s.seed); s.seed = r.seed;
+      rolls[playerId] = r.dice;
+      emit(ctx, 'challenge_round', `${player(s, playerId).name} tiró ${r.dice[0]} + ${r.dice[1]} = ${r.dice[0] + r.dice[1]}.`, playerId, { dice: r.dice, roll: true });
+      if (!rolls[other]) return;
+      const sa = rolls[c.fromId][0] + rolls[c.fromId][1], sb = rolls[c.toId!][0] + rolls[c.toId!][1];
+      if (sa !== sb) return finishChallenge(ctx, sa > sb ? c.fromId : c.toId!, `${sa} contra ${sb}`);
+      emit(ctx, 'challenge_tie', `Empate ${sa} a ${sb}: ¡se tira de nuevo!`, undefined, { rolls: { ...rolls } });
+      c.data.lastRolls = { ...rolls }; c.data.rolls = {}; c.data.round = ((c.data.round as number) ?? 1) + 1;
+      return;
+    }
     case 'ppt': {
       if (!choice || !['piedra', 'papel', 'tijera'].includes(choice)) throw new RuleError('Elegí piedra, papel o tijera.');
       if (c.secret.choices![playerId]) throw new RuleError('Ya elegiste en esta ronda.');
@@ -1657,7 +1665,7 @@ function arenaStart(ctx: Ctx, now: number) {
   const max = Math.max(...counts);
   const top = counts.map((c, i) => (c === max ? i : -1)).filter(i => i >= 0);
   const chosen = a.options[top[nextRandomInt(ctx, top.length)]];
-  a.game = chosen; a.stage = 'play'; a.startedAt = now; a.round = 1;
+  a.game = chosen; a.stage = 'play'; a.startedAt = now + ARENA_COUNTDOWN_MS; a.round = 1;
   a.alive = [...a.players]; a.eliminated = [];
   for (const id of a.players) a.scores[id] = 0;
   const def = ARENA_GAMES.find(g => g.id === chosen)!;
@@ -1679,8 +1687,21 @@ function arenaSetup(ctx: Ctx) {
       arenaNewSyllable(ctx); sec.fuse = 5000 + nextRandomInt(ctx, 10000); d.turnStartedAt = a.startedAt; return;
     }
     case 'sapos': {
-      d.pos = Object.fromEntries(a.players.map(id => [id, 0])); d.lastSide = {}; d.blockedUntil = {}; d.goal = 30; d.finished = [];
-      d.puddles = [7, 14, 22]; return;
+      // Pista vertical de 3 carriles: los sapos avanzan solos (cada vez más rápido); el jugador solo cambia de carril.
+      // Cada fila tiene, como mucho, un charco (nunca dos filas seguidas con charco: siempre hay salida).
+      const goal = SAPOS_GOAL, lanes = 3;
+      const track: number[] = [];
+      let prev = -1;
+      for (let r = 0; r < goal; r++) {
+        if (r < 6 || prev >= 0) { track.push(-1); prev = -1; continue; }
+        const lane = nextRandomInt(ctx, 100) < 48 ? nextRandomInt(ctx, lanes) : -1;
+        track.push(lane); prev = lane;
+      }
+      d.goal = goal; d.lanes = lanes; d.track = track;
+      d.lane = Object.fromEntries(a.players.map(id => [id, 1]));
+      d.lastRow = Object.fromEntries(a.players.map(id => [id, -1]));
+      d.out = {}; d.finished = []; d.finishTime = {};
+      return;
     }
     case 'oeste': { d.go = false; d.shots = {}; d.jammed = []; d.roundStartedAt = a.startedAt; return; }
     case 'rayo': { d.gridSize = 3; d.picks = {}; d.hits = null; d.roundStartedAt = a.startedAt; return; }
@@ -1704,6 +1725,7 @@ function arenaNextTrivia(ctx: Ctx) {
   a.data.question = { q: t.q, options: [...t.options] };
   a.data.answered = {};
   a.data.correctOrder = [];
+  a.data.reveal = null; a.data.revealUntil = null;
   a.secret.answer = t.answer;
   a.data.questionStartedAt = null; // lo fija el servidor con el próximo tick
 }
@@ -1727,6 +1749,7 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
   const a = s.arena!;
   if (a.stage !== 'play') throw new RuleError('El juego no está en curso.');
   if (!a.players.includes(playerId)) throw new RuleError('No participás.');
+  if (now < (a.startedAt ?? 0)) throw new RuleError('Todavía no empezó: esperá la cuenta regresiva.');
   const d = a.data, sec = a.secret;
   const p = player(s, playerId);
 
@@ -1734,6 +1757,7 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
     case 'trivia': {
       const ans = Number(payload.answer);
       const answered = d.answered as Record<string, number>;
+      if (d.reveal !== undefined && d.reveal !== null) throw new RuleError('Esperá la próxima pregunta.');
       if (answered[playerId] !== undefined) throw new RuleError('Ya respondiste.');
       answered[playerId] = ans;
       if (ans === sec.answer) {
@@ -1743,7 +1767,7 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
         a.scores[playerId] += pts;
         emit(ctx, 'arena_point', `${p.name} acertó (+${pts}).`, playerId, { points: pts });
       }
-      if (Object.keys(answered).length >= a.players.length) arenaTriviaAdvance(ctx);
+      if (Object.keys(answered).length >= a.players.length) arenaTriviaReveal(ctx, now);
       return;
     }
     case 'cana': {
@@ -1784,28 +1808,18 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
       return;
     }
     case 'sapos': {
-      const pos = d.pos as Record<string, number>;
-      const lastSide = d.lastSide as Record<string, string>;
-      const blocked = d.blockedUntil as Record<string, number>;
-      const finished = d.finished as string[];
-      if (finished.includes(playerId)) return;
-      const side = payload.side === 'L' ? 'L' : 'R';
-      if ((blocked[playerId] ?? 0) > now) return;
-      if (lastSide[playerId] === side) { blocked[playerId] = now + 400; return; } // tropezón
-      lastSide[playerId] = side;
-      const elapsed = now - (a.startedAt ?? now);
-      const speed = 1 / (1 + Math.floor(elapsed / 3000) * 0.5); // cada 3 s cuesta más avanzar
-      pos[playerId] = Math.min(d.goal as number, (pos[playerId] ?? 0) + speed);
-      const cell = Math.floor(pos[playerId]);
-      if ((d.puddles as number[]).includes(cell) && !(d.lastPuddle as Record<string, number> | undefined)?.[playerId + cell]) {
-        blocked[playerId] = now + 500;
-        d.lastPuddle = { ...((d.lastPuddle as Record<string, number>) ?? {}), [playerId + cell]: 1 };
-      }
-      if (pos[playerId] >= (d.goal as number)) {
-        finished.push(playerId);
-        emit(ctx, 'arena_round', `🐸 ¡${p.name} llegó a la meta!`, playerId, { finished: finished.length });
-        if (finished.length >= Math.min(3, a.players.length) || finished.length >= a.players.length) arenaFinish(ctx);
-      }
+      const lanes = d.lanes as number;
+      const lane = d.lane as Record<string, number>;
+      if ((d.finished as string[]).includes(playerId) || (d.out as Record<string, number>)[playerId] !== undefined) return;
+      sapoAdvance(ctx, playerId, now);                  // primero recorre las filas pendientes con el carril viejo
+      if ((d.out as Record<string, number>)[playerId] !== undefined) return;
+      let next = payload.lane !== undefined ? Number(payload.lane) : lane[playerId] + (payload.side === 'L' ? -1 : 1);
+      next = Math.max(0, Math.min(lanes - 1, Math.floor(next)));
+      if (next === lane[playerId]) return;
+      lane[playerId] = next;
+      // si se pasa a un carril con charco en la fila actual, se resbala
+      const row = Math.min((d.goal as number) - 1, Math.floor(sapoPos(now - (a.startedAt ?? now))));
+      if (row >= 0 && (d.track as number[])[row] === next) sapoSplash(ctx, playerId, row);
       return;
     }
     case 'oeste': {
@@ -1889,10 +1903,19 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
   }
 }
 
+/** Muestra la respuesta correcta y lo que puso cada uno durante unos segundos. */
+function arenaTriviaReveal(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  if (d.reveal !== undefined && d.reveal !== null) return;
+  d.reveal = a.secret.answer; d.revealUntil = now + ARENA_REVEAL_MS;
+  emit(ctx, 'arena_round', `La respuesta era "${(d.question as { options: string[] }).options[a.secret.answer as number]}".`, undefined, { reveal: a.secret.answer, answered: { ...(d.answered as Record<string, number>) } });
+}
+
 function arenaTriviaAdvance(ctx: Ctx) {
   const a = ctx.s.arena!;
   const d = a.data;
-  emit(ctx, 'arena_round', `La respuesta era "${(d.question as { options: string[] }).options[a.secret.answer as number]}".`, undefined, { reveal: a.secret.answer });
+  d.reveal = null; d.revealUntil = null;
   d.qIndex = (d.qIndex as number) + 1;
   if ((d.qIndex as number) >= 3) return arenaFinish(ctx);
   arenaNextTrivia(ctx);
@@ -1959,6 +1982,39 @@ function arenaRayoResolve(ctx: Ctx, now: number) {
   if (a.alive.length <= 1 || a.round > 8) return arenaFinish(ctx);
 }
 
+export const SAPOS_GOAL = 60;        // filas hasta la meta
+export const SAPOS_MAX_MS = 25000;
+/** Filas recorridas a los `ms` milisegundos: arranca a 2 filas/s y acelera (velocidad = 2 + t/6). */
+export function sapoPos(ms: number): number {
+  const t = Math.max(0, ms) / 1000;
+  return 2 * t + (t * t) / 12;
+}
+function sapoSplash(ctx: Ctx, id: string, row: number) {
+  const a = ctx.s.arena!;
+  (a.data.out as Record<string, number>)[id] = row;
+  arenaEliminate(ctx, id);
+  emit(ctx, 'arena_round', `💦 ¡${player(ctx.s, id).name} cayó en un charco en la fila ${row + 1}!`, id, { splash: true, row });
+}
+/** Avanza el sapo hasta la fila actual, revisando charcos fila por fila. */
+function sapoAdvance(ctx: Ctx, id: string, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  const fin = d.finished as string[], out = d.out as Record<string, number>, last = d.lastRow as Record<string, number>;
+  if (fin.includes(id) || out[id] !== undefined) return;
+  const elapsed = now - (a.startedAt ?? now);
+  if (elapsed < 0) return;
+  const goal = d.goal as number, track = d.track as number[], lane = (d.lane as Record<string, number>)[id];
+  const cur = Math.floor(sapoPos(elapsed));
+  for (let r = (last[id] ?? -1) + 1; r <= Math.min(cur, goal - 1); r++) {
+    last[id] = r;
+    if (track[r] === lane) { sapoSplash(ctx, id, r); return; }
+  }
+  if (cur >= goal) {
+    fin.push(id); (d.finishTime as Record<string, number>)[id] = now; last[id] = goal;
+    emit(ctx, 'arena_round', `🐸 ¡${player(ctx.s, id).name} llegó a la meta!`, id, { finished: fin.length });
+  }
+}
+
 /** Temporizadores y señales que dispara el servidor. */
 function arenaTick(ctx: Ctx, now: number) {
   const s = ctx.s;
@@ -1967,10 +2023,15 @@ function arenaTick(ctx: Ctx, now: number) {
   if (a.stage !== 'play') return;
   const d = a.data;
   const elapsed = now - (a.startedAt ?? now);
+  if (elapsed < 0) return; // cuenta regresiva
   switch (a.game) {
     case 'trivia':
+      if (d.reveal !== undefined && d.reveal !== null) {
+        if (now >= (d.revealUntil as number)) { arenaTriviaAdvance(ctx); if (s.arena?.stage === 'play') s.arena.data.questionStartedAt = now; }
+        return;
+      }
       if (d.questionStartedAt === null) { d.questionStartedAt = now; return; }
-      if (now - (d.questionStartedAt as number) >= 15000) { arenaTriviaAdvance(ctx); if (s.arena?.stage === 'play') (s.arena.data.questionStartedAt as unknown) = now; }
+      if (now - (d.questionStartedAt as number) >= 15000) arenaTriviaReveal(ctx, now);
       return;
     case 'cana': if (elapsed >= (d.duration as number) + 1500) arenaFinish(ctx); return;
     case 'barra': if (elapsed >= 25000) arenaFinish(ctx); return;
@@ -1990,7 +2051,13 @@ function arenaTick(ctx: Ctx, now: number) {
       if (elapsed >= 180000) arenaFinish(ctx);
       return;
     }
-    case 'sapos': if (elapsed >= 25000) arenaFinish(ctx); return;
+    case 'sapos': {
+      for (const id of [...a.alive]) sapoAdvance(ctx, id, now);
+      const fin = d.finished as string[], out = d.out as Record<string, number>;
+      const pending = a.players.filter(id => !fin.includes(id) && out[id] === undefined);
+      if (pending.length === 0 || elapsed >= SAPOS_MAX_MS) arenaFinish(ctx);
+      return;
+    }
     case 'oeste': {
       if (!d.go) {
         if (now - (d.roundStartedAt as number) >= (d.goDelay as number ?? 2500)) { d.go = true; d.goAt = now; d.goDelay = 1500 + nextRandomInt(ctx, 3000); emit(ctx, 'arena_go', '🔔 ¡Campana! ¡Disparen!', undefined, { go: true }); }
@@ -2015,7 +2082,13 @@ function arenaRanking(a: NonNullable<GameState['arena']>): string[] {
     case 'cana': return byScoreDesc(id => (d.taps as Record<string, number>)[id] ?? 0);
     case 'barra': return byScoreDesc(id => { const at = (d.attempts as Record<string, number[]>)[id]; return at.length ? Math.min(...at) : 999; }, true);
     case 'cuantos': return byScoreDesc(id => { const v = (d.answers as Record<string, number>)[id]; return v === undefined ? 1e12 : Math.abs(v - (a.secret.answer as number)); }, true);
-    case 'sapos': { const fin = d.finished as string[]; const rest = byScoreDesc(id => (d.pos as Record<string, number>)[id] ?? 0).filter(id => !fin.includes(id)); return [...fin, ...rest]; }
+    case 'sapos': {
+      const fin = d.finished as string[], out = d.out as Record<string, number>, last = d.lastRow as Record<string, number>, ft = d.finishTime as Record<string, number>;
+      const finished = [...fin].sort((x, y) => (ft[x] ?? 0) - (ft[y] ?? 0));
+      const running = a.players.filter(id => !fin.includes(id) && out[id] === undefined).sort((x, y) => (last[y] ?? 0) - (last[x] ?? 0));
+      const fell = Object.keys(out).sort((x, y) => out[y] - out[x]);
+      return [...finished, ...running, ...fell];
+    }
     case 'penales': return byScoreDesc(id => (d.goals as Record<string, number>)[id] * 1000 + (d.shots as Record<string, { power: number }[]>)[id].reduce((n, x) => n + x.power, 0));
     case 'bomba': case 'oeste': case 'rayo': case 'globos': return [...a.alive, ...[...a.eliminated].reverse()];
     case 'dibujo': return a.ranking ?? [d.drawer as string];
@@ -2028,25 +2101,28 @@ function arenaFinish(ctx: Ctx) {
   const a = s.arena!;
   if (a.stage === 'done') return;
   a.stage = 'done';
+  if (a.game === 'cuantos') a.data.answer = a.secret.answer;      // se revela la respuesta correcta
+  if (a.game === 'dibujo') a.data.word = a.secret.word;
   const ranking = a.ranking ?? arenaRanking(a);
   a.ranking = ranking;
   const rewards: Record<string, number> = {};
-  const worths = activePlayers(s).map(p => ({ id: p.id, w: netWorth(s, p.id) })).sort((x, y) => x.w - y.w);
-  const poorest = worths.length > 1 && worths[0].w < worths[1].w ? worths[0].id : null; // solo si es el más pobre sin empate
+  const worths = activePlayers(s).map(p => ({ id: p.id, w: p.cash })).sort((x, y) => x.w - y.w);
+  const poorest = worths.length > 1 && worths[0].w < worths[1].w ? worths[0].id : null; // el de menos efectivo (sin empate) cobra doble
   const winner = ranking[0];
   // empates en el primer puesto (mismo puntaje) comparten el primer premio
   ranking.forEach((id, i) => {
     if (i >= ARENA_REWARDS.length) return;
     let amt = ARENA_REWARDS[i];
     if (a.game === 'dibujo' && ranking.length === 1) amt = 100; // nadie adivinó: consuelo al dibujante
-    if (i === 0 && id === poorest && activePlayers(s).length > 2) amt *= 2;
+    if (i === 0 && id === poorest) amt *= 2;
     rewards[id] = amt;
     credit(ctx, id, amt);
   });
   a.rewards = rewards;
+  a.data.doubled = winner === poorest ? winner : null;
   const w = player(s, winner);
   w.stats.arenaWins++;
-  emit(ctx, 'arena_done', `🏟️ Arena: ganó ${w.name} (${fmt(rewards[winner])}${winner === poorest && activePlayers(s).length > 2 ? ', ¡remontada x2!' : ''}).` +
+  emit(ctx, 'arena_done', `🏟️ Arena: ganó ${w.name} (${fmt(rewards[winner])}${winner === poorest ? ', ¡remontada x2 por tener menos efectivo!' : ''}).` +
     (ranking[1] && rewards[ranking[1]] ? ` 2º ${player(s, ranking[1]).name} ${fmt(rewards[ranking[1]])}.` : '') +
     (ranking[2] && rewards[ranking[2]] ? ` 3º ${player(s, ranking[2]).name} ${fmt(rewards[ranking[2]])}.` : ''),
     winner, { ranking, rewards, game: a.game, to: winner, amount: rewards[winner] });
@@ -2101,7 +2177,7 @@ function duelAnswer(ctx: Ctx, playerId: string, accept: boolean) {
   d.status = 'playing';
   emit(ctx, 'duel_accepted', `${to.name} aceptó. ¡Empieza el duelo de ${d.game === 'truco' ? 'Truco' : 'Escopeta'}!`, playerId, { game: d.game });
   if (d.game === 'truco') {
-    const t = newTruco(d.fromId, d.toId, s.seed);
+    const t = newTruco(d.fromId, d.toId, s.seed, 15, TRUCO_HANDS);
     s.seed = t.sec.seed;
     d.data = { truco: t.pub }; d.secret = { truco: t.sec }; d.turn = t.pub.turn;
   } else escopetaLoad(ctx, true);
@@ -2449,7 +2525,7 @@ export function legalActions(state: GameState, playerId: string): Set<Action['ty
     const c = state.challenge;
     if (c.status === 'pick' && c.fromId === playerId) out.add('CHALLENGE_PROPOSE');
     if (c.status === 'pending' && c.toId === playerId) { out.add('CHALLENGE_ACCEPT'); out.add('CHALLENGE_REJECT'); }
-    if (c.status === 'playing' && (c.fromId === playerId || c.toId === playerId) && c.kind !== 'dados') out.add('CHALLENGE_MOVE');
+    if (c.status === 'playing' && (c.fromId === playerId || c.toId === playerId)) out.add('CHALLENGE_MOVE');
     if (playerId === state.hostId) out.add('CHALLENGE_CANCEL');
   }
   if (ph === 'AUCTION' && state.auction?.activeBidders.includes(playerId)) { out.add('BID'); out.add('AUCTION_PASS'); }

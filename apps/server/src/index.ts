@@ -82,6 +82,7 @@ function fail(message: string) { return { ok: false as const, error: message }; 
 function roomView(room: Room, viewerId?: string | null) {
   return {
     state: toClientState(room.state, viewerId ?? undefined),
+    serverTime: Date.now(),
     chat: room.chat.slice(-100),
     auctionDeadline: room.auctionDeadline,
     turnDeadline: room.turnDeadline,
@@ -103,7 +104,7 @@ function serverAction(room: Room, action: Action, note?: string) {
 
 /** Cada jugador recibe su propia vista (misiones propias, mano de truco, lupa). Espectadores: vista neutra. */
 function broadcast(room: Room, events: GameEvent[] = []) {
-  const base = { chat: room.chat.slice(-100), auctionDeadline: room.auctionDeadline, turnDeadline: room.turnDeadline, phaseDeadline: room.phaseDeadline, events };
+  const base = { chat: room.chat.slice(-100), auctionDeadline: room.auctionDeadline, turnDeadline: room.turnDeadline, phaseDeadline: room.phaseDeadline, serverTime: Date.now(), events };
   const perViewer = new Map<string | null, ReturnType<typeof toClientState>>();
   for (const [socketId, sess] of sessions) {
     if (sess.roomCode !== room.code) continue;
@@ -275,7 +276,7 @@ function afterStateChange(room: Room, before: GameState) {
           // Si el bot se traba, forzamos el turno para no bloquear la partida
           try { dispatch(room, { type: 'FORCE_END_TURN', playerId: room.state.hostId }); } catch { /* ignore */ }
         }
-      }, BOT_DELAY_MS);
+      }, s.turnPhase === 'ARENA' ? Math.min(BOT_DELAY_MS, 250) : BOT_DELAY_MS);
     }
   }
 }
@@ -447,6 +448,15 @@ io.on('connection', (socket: Socket) => {
     } catch { /* ignorar trazos inválidos */ }
   });
 
+  // "Abrir caja": el dueño de la caja sorpresa avisa que la abre y todos ven girar el carrete a la vez
+  socket.on('lootbox:open', () => {
+    const sess = sessions.get(socket.id);
+    const room = sess && rooms.get(sess.roomCode);
+    if (!room || !sess?.playerId) return;
+    if (room.state.lastLootbox?.playerId !== sess.playerId) return;
+    io.to(room.code).emit('lootbox:open', { playerId: sess.playerId, at: Date.now() });
+  });
+
   // Presencia de negociación: "X está negociando con Y" en la tabla en vivo
   socket.on('trade:drafting', (raw) => {
     try {
@@ -488,6 +498,7 @@ io.on('connection', (socket: Socket) => {
         if (typeof raw?.cash === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.cash = raw.cash; }
         if (typeof raw?.give === 'number') { st.properties[raw.give] = { owner: raw.playerId ?? sess.playerId, houses: 0, mortgaged: false }; }
         if (typeof raw?.duelTokens === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.duelTokens = raw.duelTokens; }
+        if (typeof raw?.arenaGame === 'string' && st.arena) st.arena.options[0] = raw.arenaGame;
         if (typeof raw?.laps === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.lapsCompleted = raw.laps; }
         room.state = st;
         broadcast(room);

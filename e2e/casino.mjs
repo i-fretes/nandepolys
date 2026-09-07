@@ -119,7 +119,8 @@ await dbg(p1, { give: 43 });
 // turno actual es p1 (después de 3 jugadores volvió al primero). p1 tira y termina.
 await dbg(p1, { position: 0, dice: [1, 3] }); // 4: impuesto → elegir
 await click(p1, 'Tirar dados');
-await p1.waitForTimeout(800);
+await p1.waitForFunction(() => window.__nandepoly.store.getState().moving === null, null, { timeout: 8000, polling: 100 });
+await p1.waitForTimeout(300);
 await clickIf(p1, 'Pagar ₲ 200.000');
 await click(p1, 'Terminar turno');
 await waitTurnChange(firstName);

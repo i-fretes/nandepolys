@@ -50,7 +50,7 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
     body: <p>Si tenés que pagar y no te alcanza el efectivo, el juego te frena: hipotecá, vendé edificios o negociá hasta juntar la plata y tocá <b>Pagar</b>. Si ni vendiendo todo alcanza, quebrás: tus bienes pasan a quien le debías (o vuelven al banco y se subastan si era el banco). Quedás como espectador.</p>,
   },
   {
-    title: 'Casino (dos casillas)', icon: '🎰',
+    title: 'Casino (dos casillas) y Jackpot', icon: '🎰',
     body: <p>Con la opción activada, las dos casillas 🎰 (a los lados del tablero) son <b>Casinos</b>. Sin la opción son casillas de descanso. Al caer podés apostar una vez (o irte sin apostar): <b>Ruleta</b> (49 % ganás lo apostado), <b>Quiniela</b> (elegís la suma de los dados: el 7 paga 5 veces, el 2 y el 12 pagan 30), <b>Doble o nada</b> (par dobla, impar perdés todo; retirate cuando quieras, hasta 4 pasos), <b>Carrera de carretas</b> (seis carretas, paga 5 a 1). Con el <b>Jackpot</b> activo, todo lo que se pierde se acumula y se lo lleva quien saque doble seis en su tirada normal.</p>,
   },
   {
@@ -65,18 +65,18 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
     title: 'La Arena', icon: '🏟️',
     body: (
       <div className="space-y-2">
-        <p>Con la opción activada, hay dos casillas 🏟️ (arriba y abajo). Cuando alguien cae, <b>todos juegan a la vez</b> un mini-juego: se sortean 3 y se <b>vota</b> durante 8 segundos (empate: al azar). Nadie apuesta plata: <b>el banco paga</b> ₲ 300.000 / 150.000 / 50.000 a los tres primeros, y si gana el jugador de menor patrimonio, <b>cobra doble</b>.</p>
+        <p>Con la opción activada, hay dos casillas 🏟️ (arriba y abajo). Cuando alguien cae, <b>todos juegan a la vez</b> un mini-juego: se sortean 3 y se <b>vota</b> durante 8 segundos (empate: al azar). Nadie apuesta plata: <b>el banco paga</b> ₲ 300.000 / 150.000 / 50.000 a los tres primeros, y si gana el jugador que tiene <b>menos efectivo</b>, <b>cobra doble</b> (₲ 600.000).</p>
         <ul className="list-inside list-disc space-y-1">
           <li><b>🧠 Trivia relámpago</b>: 3 preguntas, 15 s cada una; 3 puntos por acertar + bonus por rapidez.</li>
           <li><b>🍬 Caña dulce</b>: 5 segundos tocando la pantalla lo más rápido posible.</li>
           <li><b>🎯 Frená la barra</b>: la aguja va y viene; frenala en el centro. 3 intentos, cuenta el mejor.</li>
           <li><b>🔢 ¿Cuántos hay?</b>: una pregunta con número; gana quien más se acerca.</li>
           <li><b>💣 Palabra bomba</b>: escribí una palabra que contenga la sílaba (TOM → TOMATE) antes de que explote; la mecha es secreta. Sin acentos y da igual mayúsculas. 2 vidas. Vale el diccionario español y los paraguayismos.</li>
-          <li><b>🐸 Carrera de sapos</b>: alterná ← → (o A / D, o los dos botones en el celular) con ritmo; repetir el lado te frena y los charcos resbalan. Cada 3 segundos cuesta más avanzar. Dura 25 s como máximo.</li>
+          <li><b>🐸 Carrera de sapos</b>: pista vertical de 3 carriles; el sapo salta solo y cada vez más rápido. Vos solo cambiás de carril con ← → (A / D) o los dos botones del celular. Si caés en un charco quedás afuera. Gana el primero que llega a la meta (fila 60); después, quien llegó más lejos.</li>
           <li><b>🤠 Duelo del Oeste</b>: esperá la campana y tocá a quién disparar; el más rápido dispara primero. Disparar antes traba el revólver.</li>
           <li><b>⚡ Esquivá el rayo</b>: elegí una casilla; en 3 segundos caen rayos en un tercio del tablero. El último en pie gana.</li>
           <li><b>⚽ Penales</b>: tres penales; un toque fija la fuerza (ni flojo ni por arriba) y otro la dirección. El arquero se tira a un lado.</li>
-          <li><b>🎈 Ruleta rusa de globos</b>: un globo esconde la aguja; por turnos pinchás uno. Quien la encuentra queda afuera.</li>
+          <li><b>🎈 Ruleta rusa de globos</b>: un globo esconde la aguja; por turnos cada uno pincha uno. Quien la encuentra queda afuera, se inflan globos nuevos y siguen los demás hasta que queda uno.</li>
           <li><b>🎨 Adiviná el dibujo</b>: quien cayó dibuja; el primero que acierta gana y el dibujante también cobra.</li>
         </ul>
       </div>
@@ -100,7 +100,7 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
       <div className="space-y-2">
         <p>Cada <b>3 vueltas</b> completas ganás una <b>ficha</b> 🔫. En tu turno la gastás para retar a alguien por <b>hasta ₲ 500.000</b>. Si el rival se niega, te paga ₲ 50.000 y conservás la ficha. El anfitrión puede anular un duelo trabado.</p>
         <p><b>Escopeta</b>: se cargan de 1 a 4 cartuchos de verdad y de 1 a 4 de fogueo, mezclados; se anuncia cuántos hay de cada uno. Por turnos elegís <b>dispararte</b> (si sale de fogueo, seguís vos) o <b>disparar al rival</b> (pasa el turno). 3 vidas cada uno. Ítems: 🔍 <b>lupa</b> (mirás el próximo cartucho), 🍺 <b>cerveza</b> (lo expulsás) y ⛓️ <b>esposas</b> (el rival pierde el turno). Cuando se vacía, se recarga.</p>
-        <p><b>Truco paraguayo</b> mano a mano a 15 puntos: envido (2), envido + envido (4), real envido (3), falta envido (lo que le falta al que va ganando), <b>flor</b> (3 cartas del mismo palo: 3 puntos automáticos), truco (2), retruco (3) y vale cuatro (4). El 1 de espada manda; después 1 de basto, 7 de espada, 7 de oro, los 3, los 2, los 1 falsos, 12, 11, 10, 7 falsos, 6, 5 y 4. Solo vos ves tu mano.</p>
+        <p><b>Truco paraguayo</b> mano a mano, <b>a 2 manos</b> (gana el que suma más puntos; si empatan, una mano más; a 15 termina antes): envido (2), envido + envido (4), real envido (3), falta envido (lo que le falta al que va ganando), <b>flor</b> (3 cartas del mismo palo: 3 puntos automáticos), truco (2), retruco (3) y vale cuatro (4). El 1 de espada manda; después 1 de basto, 7 de espada, 7 de oro, los 3, los 2, los 1 falsos, 12, 11, 10, 7 falsos, 6, 5 y 4. Solo vos ves tu mano.</p>
       </div>
     ),
   },

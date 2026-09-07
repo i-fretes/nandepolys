@@ -182,6 +182,15 @@ describe('desafíos', () => {
     expect(rej.state.challenge).toBeNull();
 
     r = act(r.state, { type: 'CHALLENGE_ACCEPT', playerId: b });
+    expect(r.state.challenge?.status).toBe('playing');
+    // cada uno tira con su botón; con empate se repite
+    let guard = 0;
+    while (r.state.challenge && guard++ < 20) {
+      const rolls = r.state.challenge.data.rolls ?? {};
+      const who = rolls[a] ? b : a;
+      if (rolls[a]) expect(() => act(r.state, { type: 'CHALLENGE_MOVE', playerId: a })).toThrow('Ya tiraste'); // el que ya tiró no puede repetir
+      r = act(r.state, { type: 'CHALLENGE_MOVE', playerId: who });
+    }
     expect(r.state.challenge).toBeNull();
     expect(r.state.turnPhase).toBe('AWAITING_ROLL');
     const done = r.events.find(e => e.type === 'challenge_done')!;
@@ -266,9 +275,15 @@ describe('desafíos', () => {
     expect(r.state.challenge?.status).toBe('pick');
     expect(legalActions(r.state, a).has('CHALLENGE_PROPOSE')).toBe(true);
     r = act(r.state, { type: 'CHALLENGE_PROPOSE', playerId: a, toId: b, kind: 'dados', amount: 999 });
-    expect(r.state.challenge).toBeNull(); // dados se resuelve solo
-    const done = r.events.find(e => e.type === 'challenge_done')!;
-    expect(done.data!.amount).toBe(100);
+    expect(r.state.challenge?.status).toBe('playing'); // por carta no hace falta aceptar
+    let guard = 0, done = r.events.find(e => e.type === 'challenge_done');
+    while (!done && guard++ < 20) {
+      const rolls = r.state.challenge!.data.rolls ?? {};
+      r = act(r.state, { type: 'CHALLENGE_MOVE', playerId: rolls[a] ? b : a });
+      done = r.events.find(e => e.type === 'challenge_done');
+    }
+    expect(done!.data!.amount).toBe(100);
+    expect(r.state.challenge).toBeNull();
     expect(r.state.turnPhase).toBe('END_TURN');
   });
 

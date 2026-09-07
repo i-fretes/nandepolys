@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ARENA_GAMES, ARENA_REWARDS, type ArenaGame, type ArenaState } from '@nandepoly/engine';
-import { useMe, useStore } from '../store';
+import { ARENA_GAMES, ARENA_REWARDS, sapoPos, type ArenaGame, type ArenaState } from '@nandepoly/engine';
+import { serverNow, useMe, useMoving, useStore } from '../store';
 import { money, tokenEmoji } from '../format';
 import { socket } from '../socket';
 import { sfx } from '../sound';
@@ -13,13 +13,20 @@ function useNow(ms = 100) {
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(id); }, [ms]);
   return now;
 }
+/** Reloj del servidor (misma cuenta regresiva en todas las pantallas). */
+function useServerNow(ms = 100) {
+  const [now, setNow] = useState(serverNow());
+  useEffect(() => { const id = setInterval(() => setNow(serverNow()), ms); return () => clearInterval(id); }, [ms]);
+  return now;
+}
 
 /** La Arena: votación, los 11 mini-juegos y el podio. Todos los jugadores participan a la vez. */
 export default function ArenaDialog() {
   const state = useStore(s => s.state)!;
   const me = useMe();
   const a = state.arena;
-  const open = state.turnPhase === 'ARENA' && !!a;
+  const moving = useMoving();
+  const open = state.turnPhase === 'ARENA' && !!a && !moving;
   return (
     <AnimatePresence>
       {open && a && (
@@ -78,10 +85,8 @@ function Vote({ a, meId }: { a: ArenaState; meId: string | null }) {
 // ---------------------------------------------------------------------------------------
 function Header({ a, subtitle }: { a: ArenaState; subtitle?: React.ReactNode }) {
   const def = ARENA_GAMES.find(x => x.id === a.game)!;
-  const startedAt = useRef(Date.now());
-  useEffect(() => { startedAt.current = Date.now(); }, [a.game]);
-  const now = useNow(250);
-  const left = Math.max(0, def.seconds - Math.floor((now - startedAt.current) / 1000));
+  const now = useServerNow(250);
+  const left = Math.max(0, def.seconds - Math.floor((now - (a.startedAt ?? now)) / 1000));
   const showTimer = a.game !== 'bomba' && a.game !== 'oeste' && a.game !== 'rayo' && a.game !== 'globos';
   return (
     <div className="flex items-center gap-3">
@@ -114,9 +119,28 @@ function Players({ a, render }: { a: ArenaState; render?: (id: string) => React.
   );
 }
 
+function Countdown({ a }: { a: ArenaState }) {
+  const now = useServerNow(100);
+  const def = ARENA_GAMES.find(x => x.id === a.game)!;
+  const left = Math.max(0, Math.ceil(((a.startedAt ?? now) - now) / 1000));
+  const lastTick = useRef(-1);
+  useEffect(() => { if (left !== lastTick.current) { lastTick.current = left; if (left > 0) sfx.countdown(); else sfx.go(); } }, [left]);
+  return (
+    <div className="flex flex-col items-center py-6 text-center">
+      <div className="text-5xl">{def.icon}</div>
+      <div className="mt-1 text-2xl font-black">{def.name}</div>
+      <div className="mt-1 max-w-md text-sm text-ink/70">{def.desc}</div>
+      <motion.div key={left} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`countdown mt-4 ${left === 0 ? 'go' : ''}`}>{left > 0 ? left : '¡YA!'}</motion.div>
+      <div className="mt-2 text-xs font-semibold text-ink/50">Preparate…</div>
+    </div>
+  );
+}
+
 function Play({ a, meId }: { a: ArenaState; meId: string | null }) {
   const participating = !!meId && a.players.includes(meId);
   const props = { a, meId, participating };
+  const now = useServerNow(200);
+  if (a.startedAt && now < a.startedAt) return <Countdown a={a} />;
   switch (a.game as ArenaGame) {
     case 'trivia': return <Trivia {...props} />;
     case 'cana': return <Cana {...props} />;
@@ -144,26 +168,45 @@ function Trivia({ a, meId, participating }: GP) {
   const q = d.question as { q: string; options: string[] } | undefined;
   const answered = (d.answered ?? {}) as Record<string, number>;
   const mine = meId ? answered[meId] : undefined;
-  const evs = useStore(s => s.arenaEvents);
-  const reveal = [...evs].reverse().find(e => e.type === 'arena_round' && e.data.reveal !== undefined && e.id > (a.round ?? 0));
-  void reveal;
+  const state = useStore(s => s.state)!;
+  const reveal = (d.reveal ?? null) as number | null;
+  const now = useServerNow(250);
+  const qLeft = d.questionStartedAt ? Math.max(0, 15 - Math.floor((now - (d.questionStartedAt as number)) / 1000)) : 15;
   return (
     <div>
-      <Header a={a} subtitle={`Pregunta ${(d.qIndex ?? 0) + 1} de 3 · 15 s cada una · 3 puntos + bonus por rapidez`} />
+      <Header a={a} subtitle={`Pregunta ${(d.qIndex ?? 0) + 1} de 3 · 3 puntos por acertar + 2 al primero, +1 al segundo`} />
       <Players a={a} render={id => `${a.scores[id] ?? 0} pts${answered[id] !== undefined ? ' ✔' : ''}`} />
       {q && (
         <motion.div key={d.qIndex} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
-          <div className="rounded-2xl bg-slate-800 p-4 text-center text-lg font-bold text-white">{q.q}</div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {q.options.map((o, i) => (
-              <button key={i} data-answer={i} disabled={!participating || mine !== undefined}
-                onClick={() => move(act, { answer: i })}
-                className={`rounded-xl border-2 px-3 py-3 text-left font-semibold transition ${mine === i ? 'border-py-blue bg-blue-50' : 'border-black/10 bg-white hover:border-py-blue/50'} disabled:opacity-70`}>
-                <span className="mr-2 inline-grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-xs font-black">{'ABCD'[i]}</span>{o}
-              </button>
-            ))}
+          <div className="relative rounded-2xl bg-slate-800 p-4 text-center text-lg font-bold text-white">
+            {q.q}
+            {reveal === null && <span className={`absolute right-3 top-2 rounded-full px-2 py-0.5 font-mono text-xs ${qLeft <= 5 ? 'bg-red-500' : 'bg-white/20'}`}>{qLeft}s</span>}
           </div>
-          {mine !== undefined && <div className="mt-2 text-center text-xs text-ink/50">Respondiste. Esperando a los demás…</div>}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {q.options.map((o, i) => {
+              const who = Object.entries(answered).filter(([, v]) => v === i).map(([id]) => state.players.find(p => p.id === id)!).filter(Boolean);
+              const isRight = reveal !== null && reveal === i;
+              const isWrong = reveal !== null && reveal !== i && who.length > 0;
+              return (
+                <button key={i} data-answer={i} disabled={!participating || mine !== undefined || reveal !== null}
+                  onClick={() => { move(act, { answer: i }); sfx.tick(); }}
+                  className={`relative rounded-xl border-2 px-3 py-3 text-left font-semibold transition ${isRight ? 'border-emerald-500 bg-emerald-50 reveal' : isWrong ? 'border-red-300 bg-red-50' : mine === i ? 'border-py-blue bg-blue-50' : 'border-black/10 bg-white hover:border-py-blue/50'} disabled:opacity-90`}>
+                  <span className={`mr-2 inline-grid h-6 w-6 place-items-center rounded-full text-xs font-black ${isRight ? 'bg-emerald-500 text-white' : isWrong ? 'bg-red-400 text-white' : 'bg-slate-100'}`}>{isRight ? '✔' : isWrong ? '✘' : 'ABCD'[i]}</span>{o}
+                  {reveal !== null && who.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {who.map(p => <span key={p.id} className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] ${isRight ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'}`}><span className="grid h-4 w-4 place-items-center rounded-full bg-white text-[10px]" style={{ boxShadow: `0 0 0 2px ${p.color}` }}>{tokenEmoji(p.token)}</span>{p.name} {isRight ? '✔' : '✘'}</span>)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {reveal !== null ? (
+            <div className="mt-2 text-center text-sm font-bold">
+              {mine === undefined ? <span className="text-ink/50">No respondiste.</span> : mine === reveal ? <span className="text-emerald-700">¡Acertaste!</span> : <span className="text-red-600">Fallaste.</span>}
+              <span className="ml-2 text-ink/50">Siguiente pregunta en un momento…</span>
+            </div>
+          ) : mine !== undefined && <div className="mt-2 text-center text-xs text-ink/50">Respondiste. Esperando a los demás…</div>}
         </motion.div>
       )}
     </div>
@@ -176,9 +219,8 @@ function Cana({ a, meId, participating }: GP) {
   const d = a.data as D;
   const [local, setLocal] = useState(0);
   const pending = useRef(0);
-  const start = useRef(Date.now());
-  const now = useNow(100);
-  const left = Math.max(0, 5000 - (now - start.current));
+  const now = useServerNow(100);
+  const left = Math.max(0, 5000 - (now - (a.startedAt ?? now)));
   useEffect(() => {
     const id = setInterval(() => { if (pending.current > 0) { const n = pending.current; pending.current = 0; move(act, { taps: n }); } }, 350);
     return () => clearInterval(id);
@@ -305,54 +347,76 @@ function Sapos({ a, meId, participating }: GP) {
   const act = useAct();
   const d = a.data as D;
   const state = useStore(s => s.state)!;
-  const pos = (d.pos ?? {}) as Record<string, number>;
+  const track = (d.track ?? []) as number[];
+  const lanes = (d.lanes as number) ?? 3;
+  const goal = (d.goal as number) ?? 60;
+  const laneOf = (d.lane ?? {}) as Record<string, number>;
+  const out = (d.out ?? {}) as Record<string, number>;
   const finished = (d.finished ?? []) as string[];
-  const goal = (d.goal as number) ?? 30;
-  const puddles = (d.puddles ?? []) as number[];
-  const lastSide = useRef<string | null>(null);
-  const [flash, setFlash] = useState<'L' | 'R' | null>(null);
-  const step = useCallback((side: 'L' | 'R') => {
-    if (!participating || finished.includes(meId!)) return;
-    if (lastSide.current === side) { setFlash(side); setTimeout(() => setFlash(null), 150); sfx.pay(); return; }
-    lastSide.current = side;
-    move(act, { side }); sfx.hop();
-  }, [act, participating, finished, meId]);
+  const now = useServerNow(40);
+  const elapsed = now - (a.startedAt ?? now);
+  const pos = Math.min(goal, sapoPos(elapsed));
+  const myOut = meId ? out[meId] : undefined;
+  const myDone = !!meId && finished.includes(meId);
+  const canMove = participating && myOut === undefined && !myDone;
+  const [localLane, setLocalLane] = useState<number | null>(null);
+  const myLane = localLane ?? (meId ? laneOf[meId] ?? 1 : 1);
+  useEffect(() => { if (meId && laneOf[meId] !== undefined) setLocalLane(laneOf[meId]); }, [meId, laneOf[meId ?? '']]); // eslint-disable-line react-hooks/exhaustive-deps
+  const step = useCallback((dir: -1 | 1) => {
+    if (!canMove) return;
+    const next = Math.max(0, Math.min(lanes - 1, myLane + dir));
+    if (next === myLane) return;
+    setLocalLane(next);
+    move(act, { lane: next }); sfx.hop();
+  }, [act, canMove, lanes, myLane]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') { e.preventDefault(); step('L'); }
-      if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') { e.preventDefault(); step('R'); }
+      if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') { e.preventDefault(); step(-1); }
+      if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') { e.preventDefault(); step(1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [step]);
-  const t0 = useRef(Date.now());
-  const now = useNow(500);
-  const level = Math.floor((now - t0.current) / 3000);
+  // Ventana visible: unas filas por delante del sapo (la pista "baja" hacia el jugador)
+  const ROWS = 9;
+  const first = Math.max(0, Math.floor(pos) - 1);
+  const rows = Array.from({ length: ROWS }, (_, i) => first + i).filter(r => r < goal + 2);
+  const speedLevel = 1 + Math.floor(elapsed / 3000);
+  const frogs = a.players.map(id => ({ id, p: state.players.find(x => x.id === id)!, lane: id === meId ? myLane : laneOf[id] ?? 1, row: out[id] !== undefined ? out[id] : finished.includes(id) ? goal : Math.floor(pos), out: out[id] !== undefined, done: finished.includes(id) }));
   return (
     <div>
-      <Header a={a} subtitle={`Alterná ← → (o A / D). Repetir el mismo lado te frena. Charcos te resbalan. Velocidad: nivel ${level + 1}`} />
-      <div className="mt-3 space-y-1.5">
-        {a.players.map(id => {
-          const p = state.players.find(x => x.id === id)!;
-          const pct = Math.min(100, ((pos[id] ?? 0) / goal) * 100);
-          const place = finished.indexOf(id);
-          return (
-            <div key={id} className="race-lane sapo-lane">
-              {puddles.map(c => <span key={c} className="puddle" style={{ left: `${(c / goal) * 100}%` }}>💧</span>)}
-              <span className="finish" />
-              <span className="race-cart" style={{ left: `calc(${pct}% - ${pct > 90 ? 26 : 0}px)` }} title={p.name}>🐸</span>
-              <span className="absolute left-1 top-1/2 -translate-y-1/2 rounded bg-white/80 px-1 text-[10px] font-bold" style={{ color: p.color }}>{p.name}{place >= 0 ? ` · ${place + 1}º 🏁` : ''}</span>
-            </div>
-          );
-        })}
+      <Header a={a} subtitle={`Los sapos saltan solos y cada vez más rápido (velocidad ${speedLevel}). Vos solo cambiás de carril: ← → (A/D) o los botones. Charco = afuera. Meta: fila ${goal}.`} />
+      <Players a={a} render={id => (out[id] !== undefined ? `💦 fila ${out[id] + 1}` : finished.includes(id) ? '🏁' : `fila ${Math.min(goal, Math.floor(pos))}`)} />
+      <div className="sapo-track mt-3" style={{ ['--lanes' as string]: lanes }}>
+        {rows.slice().reverse().map(r => (
+          <div key={r} className={`sapo-row ${r >= goal ? 'goal' : ''}`}>
+            {Array.from({ length: lanes }, (_, l) => {
+              const puddle = r < goal && track[r] === l;
+              const here = frogs.filter(f => f.row === r && f.lane === l);
+              return (
+                <div key={l} className={`sapo-cell ${puddle ? 'puddle' : ''} ${r >= goal ? 'finish' : ''}`}>
+                  {puddle && <span className="puddle-ico">💧</span>}
+                  {here.map(f => (
+                    <span key={f.id} className={`frog ${f.out ? 'splash' : ''} ${f.id === meId ? 'mine' : ''}`} style={{ ['--c' as string]: f.p.color }} title={f.p.name}>
+                      {f.out ? '💦' : '🐸'}<i>{f.p.name}</i>
+                    </span>
+                  ))}
+                </div>
+              );
+            })}
+            <span className="sapo-rowno">{r < goal ? r + 1 : '🏁'}</span>
+          </div>
+        ))}
       </div>
       {participating && (
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <button data-sapo-l onPointerDown={() => step('L')} className={`sapo-btn ${flash === 'L' ? 'bad' : ''}`}>◀ IZQ</button>
-          <button data-sapo-r onPointerDown={() => step('R')} className={`sapo-btn ${flash === 'R' ? 'bad' : ''}`}>DER ▶</button>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <button data-sapo-l disabled={!canMove} onPointerDown={() => step(-1)} className="sapo-btn">◀ IZQ</button>
+          <button data-sapo-r disabled={!canMove} onPointerDown={() => step(1)} className="sapo-btn">DER ▶</button>
         </div>
       )}
+      {myOut !== undefined && <div className="mt-2 text-center text-sm font-bold text-red-600">💦 Caíste en un charco en la fila {myOut + 1}. Mirá cómo termina…</div>}
+      {myDone && <div className="mt-2 text-center text-sm font-bold text-emerald-700">🏁 ¡Llegaste a la meta!</div>}
     </div>
   );
 }
@@ -369,26 +433,33 @@ function Oeste({ a, meId, participating }: GP) {
   const canShoot = meAlive && !shots[meId!] && !jammed.includes(meId!);
   const evs = useStore(s => s.arenaEvents);
   const lastShots = evs.filter(e => e.type === 'arena_round' && e.data.shooter).slice(-3);
+  const rivals = alive.filter(id => id !== meId);
+  const [target, setTarget] = useState<string | null>(null);
+  useEffect(() => { if (!target || !rivals.includes(target)) setTarget(rivals[0] ?? null); }, [rivals.join(','), a.round]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [fired, setFired] = useState(false);
+  useEffect(() => { setFired(false); }, [a.round]);
+  const fire = () => { if (!canShoot || fired || !target) return; setFired(true); move(act, { target }); sfx.drum(); };
   return (
     <div>
-      <Header a={a} subtitle={`Ronda ${a.round} · Esperá la campana. Si disparás antes, se te traba el revólver.`} />
+      <Header a={a} subtitle={`Ronda ${a.round} · 1) Elegí a quién apuntás. 2) Cuando suene la campana, tocá DISPARAR. El más rápido dispara primero; si tocás antes, se te traba.`} />
       <Players a={a} render={id => (jammed.includes(id) ? '🔧 trabado' : shots[id] ? '🔫 disparó' : alive.includes(id) ? '…' : '💀')} />
-      <div className={`mt-4 rounded-2xl p-6 text-center ${d.go ? 'oeste-go' : 'oeste-wait'}`}>
-        <div className="text-5xl">{d.go ? '🔔' : '🤠'}</div>
-        <div className="mt-1 text-2xl font-black text-white">{d.go ? '¡¡DISPAREN!!' : 'Quietos… esperen la campana'}</div>
-      </div>
-      {canShoot && (
+      {canShoot && rivals.length > 0 && (
         <div className="mt-3">
-          <div className="mb-1 text-center text-xs font-semibold text-ink/60">{d.go ? 'Elegí a quién disparar' : 'Elegí a quién vas a disparar (¡pero no toques hasta la campana!)'}</div>
+          <div className="mb-1 text-center text-xs font-semibold text-ink/60">🎯 Apuntás a:</div>
           <div className="flex flex-wrap justify-center gap-2">
-            {alive.filter(id => id !== meId).map(id => { const p = state.players.find(x => x.id === id)!; return (
-              <button key={id} data-shoot={id} onClick={() => move(act, { target: id })} className="flex items-center gap-2 rounded-xl border-2 border-black/10 bg-white px-3 py-2 font-bold hover:border-red-500">
-                <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-base" style={{ boxShadow: `0 0 0 2px ${p.color}` }}>{tokenEmoji(p.token)}</span>{p.name} 🎯
+            {rivals.map(id => { const p = state.players.find(x => x.id === id)!; return (
+              <button key={id} data-aim={id} onClick={() => setTarget(id)} className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 font-bold ${target === id ? 'border-red-600 bg-red-50' : 'border-black/10 bg-white'}`}>
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-base" style={{ boxShadow: `0 0 0 2px ${p.color}` }}>{tokenEmoji(p.token)}</span>{p.name}{target === id ? ' 🎯' : ''}
               </button>
             ); })}
           </div>
         </div>
       )}
+      <button data-fire data-shoot={target ?? ''} disabled={!canShoot || fired} onPointerDown={fire} className={`oeste-btn mt-4 ${d.go ? 'go' : 'wait'} ${fired ? 'fired' : ''}`}>
+        <div className="text-6xl">{d.go ? '🔔' : '🤠'}</div>
+        <div className="mt-1 text-3xl font-black text-white">{fired ? (jammed.includes(meId ?? '') ? '🔧 ¡Se trabó!' : '🔫 ¡Disparaste!') : d.go ? '¡¡DISPARAR!!' : 'Quieto… esperá la campana'}</div>
+        {!fired && canShoot && <div className="text-xs font-semibold text-white/80">{d.go ? 'Tocá ya' : 'Si tocás antes de la campana, se te traba el revólver'}</div>}
+      </button>
       {lastShots.length > 0 && <div className="mt-3 space-y-0.5 text-center text-xs text-ink/60">{lastShots.map(e => <div key={e.id}>{e.text}</div>)}</div>}
     </div>
   );
@@ -484,7 +555,7 @@ function Globos({ a, meId, participating }: GP) {
   const colors = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6'];
   return (
     <div>
-      <Header a={a} subtitle="Un globo esconde la aguja. Por turnos, pinchá uno. El que la encuentra queda afuera." />
+      <Header a={a} subtitle={`Un globo esconde la aguja. Por turnos, cada uno pincha uno. Quien encuentra la aguja queda afuera 💥, se inflan ${a.alive.length} globos de nuevo y siguen los demás, hasta que quede uno.`} />
       <Players a={a} render={id => (a.alive.includes(id) ? (d.turn === id ? '👉' : '') : '💥')} />
       <div className="mt-2 text-center text-sm font-semibold">{myTurn ? <span className="text-red-600">¡Te toca pinchar!</span> : <>Le toca a <b>{turnP?.name}</b></>}</div>
       <div className="mt-4 flex flex-wrap items-end justify-center gap-4">
@@ -606,6 +677,17 @@ function Podium({ a }: { a: ArenaState }) {
           );
         })}
       </div>
+      {(a.data as D).doubled && <div className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-800">⚡ ¡Remontada! {state.players.find(p => p.id === (a.data as D).doubled)?.name} tenía menos efectivo y cobra el doble</div>}
+      {a.game === 'cuantos' && (
+        <div className="mx-auto mt-4 max-w-md rounded-xl bg-slate-100 p-3 text-sm">
+          <div className="text-xs text-ink/60">{String((a.data as D).q)}</div>
+          <div className="mt-1 text-lg font-black text-emerald-700">Respuesta correcta: {String((a.data as D).answer)} {String((a.data as D).unit ?? '')}</div>
+          <div className="mt-1 flex flex-wrap justify-center gap-2 text-xs">
+            {a.players.map(id => { const v = ((a.data as D).answers ?? {})[id]; const p = state.players.find(x => x.id === id)!; return <span key={id} className="rounded-full bg-white px-2 py-0.5"><b>{p.name}</b>: {v === undefined ? '—' : v}</span>; })}
+          </div>
+        </div>
+      )}
+      {a.game === 'dibujo' && (a.data as D).word && <div className="mt-3 text-sm">La palabra era <b className="text-py-red">{String((a.data as D).word).toUpperCase()}</b></div>}
       {ranking.length > 3 && <div className="mt-3 text-xs text-ink/50">Después: {ranking.slice(3).map(id => state.players.find(p => p.id === id)?.name).join(', ')}</div>}
       <div className="mt-4 text-xs text-ink/50">La partida sigue en unos segundos…</div>
     </div>

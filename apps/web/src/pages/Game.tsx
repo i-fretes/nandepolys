@@ -23,7 +23,7 @@ import DuelDialog from '../components/DuelDialog';
 import LootboxOverlay from '../components/LootboxOverlay';
 import EventWheel from '../components/EventWheel';
 import MissionsPanel from '../components/MissionsPanel';
-import { isMuted, setMuted } from '../sound';
+import { isMusicOn, isMuted, setMusicOn, setMuted, startMusic, stopMusic } from '../sound';
 import { useEffect, useState } from 'react';
 
 export default function Game() {
@@ -38,6 +38,8 @@ export default function Game() {
   const act = useStore(s => s.act);
   const [muted, setMutedState] = useState(isMuted());
   const [menuOpen, setMenuOpen] = useState(false);
+  const [music, setMusicState] = useState(isMusicOn());
+  useEffect(() => { startMusic(); return () => stopMusic(); }, []);
   const me = state.players.find(p => p.id === playerId);
   const canAbandon = !!me && !me.bankrupt && state.phase === 'PLAYING';
   const myTurn = state.phase === 'PLAYING' && state.players[state.currentPlayerIndex]?.id === playerId && (state.turnPhase === 'AWAITING_ROLL' || state.turnPhase === 'END_TURN');
@@ -75,7 +77,8 @@ export default function Game() {
           <div>Sala <b className="tracking-widest text-py-red">{roomCode}</b></div>
           <div className="flex items-center gap-2">
             <button className="text-xs font-semibold text-py-blue hover:underline" onClick={() => setRulesOpen(true)}>📖 Reglas</button>
-            <button className="text-sm text-ink/60 hover:text-ink" title={muted ? 'Activar sonido' : 'Silenciar'} onClick={() => { setMuted(!muted); setMutedState(!muted); }}>{muted ? '🔇' : '🔊'}</button>
+            <button className="text-sm text-ink/60 hover:text-ink" title={muted ? 'Activar sonido' : 'Silenciar todo'} onClick={() => { setMuted(!muted); setMutedState(!muted); }}>{muted ? '🔇' : '🔊'}</button>
+            <button className={`text-sm hover:text-ink ${music ? 'text-ink/60' : 'text-ink/25'}`} title={music ? 'Apagar música de fondo' : 'Prender música de fondo'} onClick={() => { setMusicOn(!music); setMusicState(!music); }}>🎵</button>
             <button className="btn-ghost btn-sm !px-2 !py-1 text-xs" onClick={() => setMenuOpen(v => !v)} aria-expanded={menuOpen}>☰ Más</button>
           </div>
           {menuOpen && (

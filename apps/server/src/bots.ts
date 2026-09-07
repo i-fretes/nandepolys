@@ -1,5 +1,5 @@
 import {
-  PARAGUAYISMOS, canBuild, canMortgage, canSellBuilding, currentPlayer, groupTiles, legalActions, normalizeWord, ownsFullGroup,
+  PARAGUAYISMOS, sapoPos, canBuild, canMortgage, canSellBuilding, currentPlayer, groupTiles, legalActions, normalizeWord, ownsFullGroup,
   propertiesOf, tile, type Action, type GameState, type PropertyTile,
 } from '@nandepoly/engine';
 
@@ -37,7 +37,20 @@ function arenaBot(s: GameState): Action | null {
       if (!w || now - (d.turnStartedAt ?? now) < 1500) return null;
       return { type: 'ARENA_MOVE', playerId: d.turn, now, payload: { word: w } };
     }
-    case 'sapos': { const b = bots.find(id => !(d.finished ?? []).includes(id)); if (!b) return null; const last = d.lastSide?.[b]; return { type: 'ARENA_MOVE', playerId: b, now, payload: { side: last === 'L' ? 'R' : 'L' } }; }
+    case 'sapos': {
+      // esquiva el próximo charco (a veces se distrae y se cae)
+      const track = (d.track ?? []) as number[];
+      const elapsed = now - (a.startedAt ?? now);
+      if (elapsed < 0) return null;
+      const row = Math.floor(sapoPos(elapsed));
+      for (const b of bots) {
+        if ((d.finished ?? []).includes(b) || d.out?.[b] !== undefined) continue;
+        const lane = d.lane?.[b] ?? 1;
+        const next = track[Math.min(track.length - 1, row + 1)] ?? -1;
+        if (next === lane && hash(s, row) > 0.15) return { type: 'ARENA_MOVE', playerId: b, now, payload: { lane: [0, 1, 2].find(l => l !== lane && l !== track[Math.min(track.length - 1, row)])! } };
+      }
+      return null;
+    }
     case 'oeste': {
       if (!d.go) return null;
       const b = bots.find(id => a.alive.includes(id) && !d.shots?.[id] && !(d.jammed ?? []).includes(id));
@@ -177,6 +190,7 @@ export function botAction(s: GameState): Action | null {
     if (c.status === 'playing') {
       for (const b of [from, to]) {
         if (!b?.isBot) continue;
+        if (c.kind === 'dados' && !c.data.rolls?.[b.id]) return { type: 'CHALLENGE_MOVE', playerId: b.id };
         if (c.kind === 'ppt' && !c.data.chosen?.includes(b.id)) {
           const opts = ['piedra', 'papel', 'tijera'] as const;
           return { type: 'CHALLENGE_MOVE', playerId: b.id, choice: opts[(b.cash + (c.data.rounds?.length ?? 0)) % 3] };
