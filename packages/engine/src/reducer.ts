@@ -1,5 +1,5 @@
 import { ARENA_TILES, BOARD, BOARD_SIZE, CASINO_TILES, GO_SALARY, JAIL_FINE, JAIL_TILE, PALACIO_TILE, PROPERTY_IDS, TOTAL_HOTELS, TOTAL_HOUSES, groupTiles, isProperty, tile } from './board';
-import { ARENA_GAMES, ARENA_REWARDS, BOMB_SYLLABLES, CUANTOS, DRAW_WORDS, EVENTS, LOOTBOX, MISSIONS } from './arena-data';
+import { ARENA_GAMES, ARENA_REWARDS, BLACK_CARDS, BLURRY, BOMB_SYLLABLES, CHAINS, CUANTOS, DRAW_WORDS, EVENTS, LOOTBOX, MISSIONS, WHITE_CARDS } from './arena-data';
 import { applyTruco, newTruco, type TrucoMove, type TrucoState } from './truco';
 import { CHALLENGE_CARDS, CHANCE_CARDS, COMMUNITY_CARDS, card } from './cards';
 import { TRIVIA } from './trivia';
@@ -1633,7 +1633,9 @@ function ownsFullGroupLocal(s: GameState, pid: string, g: string) { return group
 
 function startArena(ctx: Ctx, trigger: Player) {
   const s = ctx.s;
-  const pool = shuffle(ARENA_GAMES.map(g => g.id), s.seed);
+  const n = activePlayers(s).length;
+  const eligible = ARENA_GAMES.filter(g => !(g.id === 'cartas' && n < 3) && !(g.id === 'bomba2' && n < 3) && !(g.id === 'dibujo' && n < 2)).map(g => g.id);
+  const pool = shuffle(eligible, s.seed);
   s.seed = pool.seed;
   const options = pool.items.slice(0, 3);
   s.arena = {
@@ -1686,6 +1688,10 @@ function arenaSetup(ctx: Ctx) {
       d.lives = Object.fromEntries(a.players.map(id => [id, 2])); d.turnIdx = 0; d.turn = a.alive[0]; d.used = []; d.level = 0;
       arenaNewSyllable(ctx); sec.fuse = 5000 + nextRandomInt(ctx, 10000); d.turnStartedAt = a.startedAt; return;
     }
+    case 'oeste': { d.go = false; d.shots = {}; d.jammed = []; d.roundStartedAt = a.startedAt; return; }
+    case 'rayo': { d.gridSize = 3; d.picks = {}; d.hits = null; d.roundStartedAt = a.startedAt; return; }
+    case 'penales': { d.shots = Object.fromEntries(a.players.map(id => [id, [] as { power: number; dir: number; keeper: number; goal: boolean }[]])); d.goals = Object.fromEntries(a.players.map(id => [id, 0])); return; }
+    case 'globos': { d.turnIdx = 0; d.turn = a.alive[0]; d.balloons = a.alive.length + 1; d.popped = []; sec.needle = nextRandomInt(ctx, d.balloons as number); return; }
     case 'sapos': {
       // Pista vertical de 3 carriles: los sapos avanzan solos (cada vez más rápido); el jugador solo cambia de carril.
       // Cada fila tiene, como mucho, un charco (nunca dos filas seguidas con charco: siempre hay salida).
@@ -1703,10 +1709,29 @@ function arenaSetup(ctx: Ctx) {
       d.out = {}; d.finished = []; d.finishTime = {};
       return;
     }
-    case 'oeste': { d.go = false; d.shots = {}; d.jammed = []; d.roundStartedAt = a.startedAt; return; }
-    case 'rayo': { d.gridSize = 3; d.picks = {}; d.hits = null; d.roundStartedAt = a.startedAt; return; }
-    case 'penales': { d.shots = Object.fromEntries(a.players.map(id => [id, [] as { power: number; dir: number; keeper: number; goal: boolean }[]])); d.goals = Object.fromEntries(a.players.map(id => [id, 0])); return; }
-    case 'globos': { d.turnIdx = 0; d.turn = a.alive[0]; d.balloons = a.alive.length + 1; d.popped = []; sec.needle = nextRandomInt(ctx, d.balloons as number); return; }
+    case 'cartas': {
+      d.round = 1; d.rounds = 3; d.judgeIdx = 0; d.stage = 'pick'; d.played = []; d.pickedIds = []; d.lastWin = null; d.stageAt = a.startedAt;
+      const deck = shuffle(WHITE_CARDS.map((_, i) => i), s.seed); s.seed = deck.seed;
+      const blacks = shuffle(BLACK_CARDS.map((_, i) => i), s.seed); s.seed = blacks.seed;
+      sec.deck = deck.items; sec.blacks = blacks.items; sec.hands = {}; sec.plays = {}; sec.playedIds = [];
+      for (const id of a.players) (sec.hands as Record<string, number[]>)[id] = (sec.deck as number[]).splice(0, 6);
+      cartasNewRound(ctx);
+      return;
+    }
+    case 'borrosa': { d.qIndex = 0; d.rounds = 3; sec.used = []; borrosaNext(ctx); return; }
+    case 'cadena': { d.qIndex = 0; d.rounds = 2; sec.used = []; cadenaNext(ctx); return; }
+    case 'ruleta': {
+      d.turn = a.alive[0]; d.pos = 0; d.clicks = 0; d.passes = Object.fromEntries(a.players.map(id => [id, 1])); d.lastShot = null; d.turnStartedAt = a.startedAt; d.reloads = 0;
+      sec.chamber = nextRandomInt(ctx, 6);
+      return;
+    }
+    case 'bomba2': {
+      const sab = a.players.includes(a.triggeredBy) ? a.triggeredBy : a.players[0];
+      d.saboteur = sab; d.round = 1; d.rounds = 3; d.wires = 4; d.stage = 'plant'; d.cuts = {}; d.reveal = null; d.stageAt = a.startedAt;
+      d.defusers = a.players.filter(id => id !== sab);
+      sec.trap = null;
+      return;
+    }
     case 'dibujo': {
       const trig = player(s, a.triggeredBy);
       d.drawer = trig.isBot ? (a.players.find(id => !player(s, id).isBot) ?? a.triggeredBy) : a.triggeredBy;
@@ -1807,21 +1832,6 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
       arenaBombNext(ctx, now);
       return;
     }
-    case 'sapos': {
-      const lanes = d.lanes as number;
-      const lane = d.lane as Record<string, number>;
-      if ((d.finished as string[]).includes(playerId) || (d.out as Record<string, number>)[playerId] !== undefined) return;
-      sapoAdvance(ctx, playerId, now);                  // primero recorre las filas pendientes con el carril viejo
-      if ((d.out as Record<string, number>)[playerId] !== undefined) return;
-      let next = payload.lane !== undefined ? Number(payload.lane) : lane[playerId] + (payload.side === 'L' ? -1 : 1);
-      next = Math.max(0, Math.min(lanes - 1, Math.floor(next)));
-      if (next === lane[playerId]) return;
-      lane[playerId] = next;
-      // si se pasa a un carril con charco en la fila actual, se resbala
-      const row = Math.min((d.goal as number) - 1, Math.floor(sapoPos(now - (a.startedAt ?? now))));
-      if (row >= 0 && (d.track as number[])[row] === next) sapoSplash(ctx, playerId, row);
-      return;
-    }
     case 'oeste': {
       if (!a.alive.includes(playerId)) throw new RuleError('Estás eliminado.');
       const shots = d.shots as Record<string, string>;
@@ -1886,6 +1896,118 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
       const next = order[((order.indexOf(playerId) + 1) % order.length)];
       d.turn = next;
       return;
+    }
+    case 'sapos': {
+      const lanes = d.lanes as number;
+      const lane = d.lane as Record<string, number>;
+      if ((d.finished as string[]).includes(playerId) || (d.out as Record<string, number>)[playerId] !== undefined) return;
+      sapoAdvance(ctx, playerId, now);                  // primero recorre las filas pendientes con el carril viejo
+      if ((d.out as Record<string, number>)[playerId] !== undefined) return;
+      let next = payload.lane !== undefined ? Number(payload.lane) : lane[playerId] + (payload.side === 'L' ? -1 : 1);
+      next = Math.max(0, Math.min(lanes - 1, Math.floor(next)));
+      if (next === lane[playerId]) return;
+      lane[playerId] = next;
+      // si se pasa a un carril con charco en la fila actual, se resbala
+      const row = Math.min((d.goal as number) - 1, Math.floor(sapoPos(now - (a.startedAt ?? now))));
+      if (row >= 0 && (d.track as number[])[row] === next) sapoSplash(ctx, playerId, row);
+      return;
+    }
+    case 'cartas': {
+      if (d.stage === 'pick') {
+        if (playerId === d.judge) throw new RuleError('El juez espera las cartas de los demás.');
+        const hand = (sec.hands as Record<string, number[]>)[playerId];
+        const plays = sec.plays as Record<string, number>;
+        if (plays[playerId] !== undefined) throw new RuleError('Ya jugaste tu carta.');
+        const idx = Number(payload.card);
+        if (!(idx >= 0 && idx < hand.length)) throw new RuleError('Carta inválida.');
+        plays[playerId] = hand.splice(idx, 1)[0];
+        const deck = sec.deck as number[];
+        if (deck.length) hand.push(deck.shift()!);
+        (d.pickedIds as string[]).push(playerId);
+        const pending = a.players.filter(id => id !== d.judge && plays[id] === undefined);
+        if (pending.length === 0) cartasToJudge(ctx, now);
+        return;
+      }
+      if (d.stage === 'judge') {
+        if (playerId !== d.judge) throw new RuleError('Solo el juez elige.');
+        const pick = Number(payload.pick);
+        const ids = sec.playedIds as string[];
+        if (!(pick >= 0 && pick < ids.length)) throw new RuleError('Carta inválida.');
+        const winner = ids[pick];
+        a.scores[winner] += 1;
+        d.lastWin = { text: (d.played as string[])[pick], winner, black: d.black };
+        emit(ctx, 'arena_round', `🃏 El juez ${p.name} eligió "${(d.played as string[])[pick]}" — punto para ${player(s, winner).name}.`, winner, { winner, card: (d.played as string[])[pick] });
+        d.stage = 'result'; d.stageAt = now;
+        return;
+      }
+      throw new RuleError('Esperá la próxima ronda.');
+    }
+    case 'borrosa': {
+      if (d.reveal !== null && d.reveal !== undefined) throw new RuleError('Esperá la próxima imagen.');
+      const answered = d.answered as Record<string, number>;
+      if (answered[playerId] !== undefined) throw new RuleError('Ya respondiste en esta ronda.');
+      const ans = Number(payload.answer);
+      answered[playerId] = ans;
+      if (ans === sec.answer) {
+        a.scores[playerId] += 3;
+        emit(ctx, 'arena_point', `${p.name} acertó (+3).`, playerId, { points: 3 });
+        borrosaReveal(ctx, now, playerId);
+      } else {
+        emit(ctx, 'arena_round', `${p.name} falló: queda afuera de esta ronda.`, playerId, { wrong: true });
+        if (a.players.every(id => answered[id] !== undefined)) borrosaReveal(ctx, now, null);
+      }
+      return;
+    }
+    case 'cadena': {
+      if (d.reveal !== null && d.reveal !== undefined) throw new RuleError('Esperá la próxima cadena.');
+      const orders = d.orders as Record<string, number[]>;
+      if (orders[playerId]) throw new RuleError('Ya ordenaste.');
+      const order = Array.isArray(payload.order) ? (payload.order as unknown[]).map(Number) : [];
+      const n = (d.shown as string[]).length;
+      if (order.length !== n || new Set(order).size !== n || order.some(v => !(v >= 0 && v < n))) throw new RuleError('Tenés que ordenar las cuatro.');
+      orders[playerId] = order;
+      if (a.players.every(id => orders[id])) cadenaReveal(ctx, now);
+      return;
+    }
+    case 'ruleta': {
+      if (!a.alive.includes(playerId)) throw new RuleError('Ya quedaste afuera.');
+      if (d.turn !== playerId) throw new RuleError('No es tu turno.');
+      const kind = String(payload.kind);
+      if (kind === 'pass') {
+        const passes = d.passes as Record<string, number>;
+        if ((passes[playerId] ?? 0) <= 0) throw new RuleError('Ya usaste tu pase.');
+        passes[playerId]--;
+        emit(ctx, 'arena_round', `${p.name} pasa el revólver sin apretar (usó su pase).`, playerId, { pass: true });
+        ruletaNextTurn(ctx, now);
+        return;
+      }
+      if (kind === 'spin') {
+        sec.chamber = nextRandomInt(ctx, 6); d.pos = 0; d.clicks = 0;
+        emit(ctx, 'arena_round', `${p.name} gira el tambor…`, playerId, { spin: true });
+      } else if (kind !== 'shoot') throw new RuleError('Jugada inválida.');
+      ruletaShoot(ctx, playerId, now);
+      return;
+    }
+    case 'bomba2': {
+      const wire = Number(payload.wire);
+      if (!(wire >= 0 && wire < (d.wires as number))) throw new RuleError('Cable inválido.');
+      if (d.stage === 'plant') {
+        if (playerId !== d.saboteur) throw new RuleError('El saboteador está eligiendo la trampa…');
+        sec.trap = wire; d.stage = 'cut'; d.stageAt = now;
+        emit(ctx, 'arena_round', `🧨 ${p.name} plantó la trampa. ¡A cortar cables!`, playerId, { planted: true });
+        return;
+      }
+      if (d.stage === 'cut') {
+        if (playerId === d.saboteur) throw new RuleError('Vos plantaste la bomba: esperá.');
+        if (!a.alive.includes(playerId)) throw new RuleError('Ya volaste.');
+        const cuts = d.cuts as Record<string, number>;
+        if (cuts[playerId] !== undefined) throw new RuleError('Ya cortaste.');
+        cuts[playerId] = wire;
+        const pending = (d.defusers as string[]).filter(id => a.alive.includes(id) && cuts[id] === undefined);
+        if (pending.length === 0) bomba2Resolve(ctx, now);
+        return;
+      }
+      throw new RuleError('Esperá la próxima ronda.');
     }
     case 'dibujo': {
       if (playerId === d.drawer) throw new RuleError('El que dibuja no adivina.');
@@ -1982,6 +2104,7 @@ function arenaRayoResolve(ctx: Ctx, now: number) {
   if (a.alive.length <= 1 || a.round > 8) return arenaFinish(ctx);
 }
 
+// --- Carrera de sapos ---
 export const SAPOS_GOAL = 60;        // filas hasta la meta
 export const SAPOS_MAX_MS = 25000;
 /** Filas recorridas a los `ms` milisegundos: arranca a 2 filas/s y acelera (velocidad = 2 + t/6). */
@@ -2013,6 +2136,156 @@ function sapoAdvance(ctx: Ctx, id: string, now: number) {
     fin.push(id); (d.finishTime as Record<string, number>)[id] = now; last[id] = goal;
     emit(ctx, 'arena_round', `🐸 ¡${player(ctx.s, id).name} llegó a la meta!`, id, { finished: fin.length });
   }
+}
+
+// --- Cartas contra el Paraguay ---
+export const CARTAS_PICK_MS = 35000, CARTAS_JUDGE_MS = 25000, CARTAS_RESULT_MS = 4000;
+function cartasNewRound(ctx: Ctx) {
+  const a = ctx.s.arena!;
+  const d = a.data, sec = a.secret;
+  d.judge = a.players[((d.judgeIdx as number)) % a.players.length];
+  const blacks = sec.blacks as number[];
+  d.black = BLACK_CARDS[blacks.shift() ?? 0];
+  d.stage = 'pick'; d.played = []; d.pickedIds = []; sec.plays = {}; sec.playedIds = [];
+}
+function cartasToJudge(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data, sec = a.secret;
+  const plays = sec.plays as Record<string, number>;
+  const ids = Object.keys(plays);
+  if (ids.length === 0) { emit(ctx, 'arena_round', 'Nadie jugó una carta. Se pasa de ronda.', undefined, {}); return cartasNext(ctx, now); }
+  const sh = shuffle(ids, ctx.s.seed); ctx.s.seed = sh.seed;
+  sec.playedIds = sh.items;
+  d.played = sh.items.map(id => WHITE_CARDS[plays[id]]);
+  d.stage = 'judge'; d.stageAt = now;
+}
+function cartasNext(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  d.round = (d.round as number) + 1; d.judgeIdx = (d.judgeIdx as number) + 1;
+  if ((d.round as number) > (d.rounds as number)) return arenaFinish(ctx);
+  cartasNewRound(ctx); d.stageAt = now;
+}
+
+// --- La foto borrosa ---
+export const BORROSA_ROUND_MS = 14000, BORROSA_REVEAL_MS = 3000;
+function borrosaNext(ctx: Ctx) {
+  const a = ctx.s.arena!;
+  const d = a.data, sec = a.secret;
+  const used = sec.used as number[];
+  let idx = nextRandomInt(ctx, BLURRY.length);
+  for (let i = 0; i < BLURRY.length && used.includes(idx); i++) idx = (idx + 1) % BLURRY.length;
+  used.push(idx);
+  const item = BLURRY[idx];
+  const opts = shuffle([...item.options], ctx.s.seed); ctx.s.seed = opts.seed;
+  d.emoji = item.emoji; d.options = opts.items; sec.answer = opts.items.indexOf(item.answer);
+  d.answered = {}; d.reveal = null; d.roundStartedAt = null; d.winner = null;
+}
+function borrosaReveal(ctx: Ctx, now: number, winner: string | null) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  d.reveal = a.secret.answer; d.revealUntil = now + BORROSA_REVEAL_MS; d.winner = winner;
+  emit(ctx, 'arena_round', winner ? `🔍 ¡${player(ctx.s, winner).name} adivinó: ${(d.options as string[])[a.secret.answer as number]}!` : `Nadie adivinó. Era: ${(d.options as string[])[a.secret.answer as number]}.`, winner ?? undefined, { reveal: a.secret.answer, winner });
+}
+function borrosaAdvance(ctx: Ctx) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  d.qIndex = (d.qIndex as number) + 1;
+  if ((d.qIndex as number) >= (d.rounds as number)) return arenaFinish(ctx);
+  borrosaNext(ctx);
+}
+
+// --- Ordená la cadena ---
+export const CADENA_ROUND_MS = 25000, CADENA_REVEAL_MS = 4000;
+function cadenaNext(ctx: Ctx) {
+  const a = ctx.s.arena!;
+  const d = a.data, sec = a.secret;
+  const used = sec.used as number[];
+  let idx = nextRandomInt(ctx, CHAINS.length);
+  for (let i = 0; i < CHAINS.length && used.includes(idx); i++) idx = (idx + 1) % CHAINS.length;
+  used.push(idx);
+  const ch = CHAINS[idx];
+  const sh = shuffle(ch.items.map((_, i) => i), ctx.s.seed); ctx.s.seed = sh.seed;
+  d.title = ch.title; d.shown = sh.items.map(i => ch.items[i]);           // orden mezclado que ve la gente
+  sec.correct = ch.items.map(it => (d.shown as string[]).indexOf(it));     // índices de d.shown en el orden correcto
+  d.orders = {}; d.results = null; d.reveal = null; d.roundStartedAt = null;
+}
+function cadenaReveal(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  const correct = a.secret.correct as number[];
+  const orders = d.orders as Record<string, number[]>;
+  const results: Record<string, number> = {};
+  for (const id of a.players) {
+    const o = orders[id];
+    results[id] = o ? o.reduce((n, v, i) => n + (v === correct[i] ? 1 : 0), 0) : 0;
+    a.scores[id] += results[id];
+  }
+  d.results = results; d.reveal = correct; d.revealUntil = now + CADENA_REVEAL_MS;
+  const best = a.players.filter(id => results[id] === 4);
+  emit(ctx, 'arena_round', best.length ? `🔗 Orden perfecto: ${best.map(id => player(ctx.s, id).name).join(', ')}.` : '🔗 Nadie acertó el orden completo.', undefined, { reveal: correct, results });
+}
+function cadenaAdvance(ctx: Ctx) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  d.qIndex = (d.qIndex as number) + 1;
+  if ((d.qIndex as number) >= (d.rounds as number)) return arenaFinish(ctx);
+  cadenaNext(ctx);
+}
+
+// --- Ruleta de la muerte ---
+export const RULETA_TURN_MS = 12000;
+function ruletaNextTurn(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  const order = a.alive;
+  const i = order.indexOf(d.turn as string);
+  d.turn = order[(i + 1) % order.length] ?? order[0];
+  d.turnStartedAt = now;
+}
+function ruletaShoot(ctx: Ctx, playerId: string, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data, sec = a.secret;
+  const p = player(ctx.s, playerId);
+  if (d.pos === sec.chamber) {
+    d.lastShot = { by: playerId, bang: true };
+    emit(ctx, 'arena_round', `💥 ¡BANG! ${p.name} quedó afuera.`, playerId, { bang: true });
+    arenaEliminate(ctx, playerId);
+    sec.chamber = nextRandomInt(ctx, 6); d.pos = 0; d.clicks = 0; d.reloads = (d.reloads as number) + 1;
+    if (a.alive.length <= 1) return arenaFinish(ctx);
+    // el turno pasa al siguiente en la ronda (el eliminado ya no está)
+    d.turn = a.alive[(a.eliminated.length + (d.reloads as number)) % a.alive.length]; d.turnStartedAt = now;
+    return;
+  }
+  d.pos = (d.pos as number) + 1; d.clicks = (d.clicks as number) + 1;
+  d.lastShot = { by: playerId, bang: false };
+  emit(ctx, 'arena_round', `${p.name} aprieta… clic. (${6 - (d.clicks as number)} recámaras quedan)`, playerId, { bang: false, clicks: d.clicks });
+  ruletaNextTurn(ctx, now);
+}
+
+// --- Plantá la bomba ---
+export const BOMBA2_PLANT_MS = 12000, BOMBA2_CUT_MS = 15000, BOMBA2_REVEAL_MS = 4000;
+function bomba2Resolve(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data, sec = a.secret;
+  const cuts = d.cuts as Record<string, number>;
+  const trap = sec.trap as number;
+  const defusers = (d.defusers as string[]).filter(id => a.alive.includes(id));
+  for (const id of defusers) if (cuts[id] === undefined) cuts[id] = nextRandomInt(ctx, d.wires as number); // el indeciso corta cualquiera
+  const blown = defusers.filter(id => cuts[id] === trap);
+  for (const id of defusers) if (!blown.includes(id)) a.scores[id] += 1;
+  a.scores[d.saboteur as string] += blown.length;
+  for (const id of blown) arenaEliminate(ctx, id);
+  d.reveal = { trap, cuts: { ...cuts }, blown }; d.stage = 'reveal'; d.stageAt = now;
+  emit(ctx, 'arena_round', blown.length ? `🧨 ¡BOOM! El cable trampa era el ${['rojo', 'azul', 'verde', 'amarillo'][trap]}: ${blown.map(id => player(ctx.s, id).name).join(', ')} volaron.` : `Todos cortaron bien: el cable trampa era el ${['rojo', 'azul', 'verde', 'amarillo'][trap]}.`, undefined, { trap, blown });
+}
+function bomba2Next(ctx: Ctx, now: number) {
+  const a = ctx.s.arena!;
+  const d = a.data;
+  d.round = (d.round as number) + 1;
+  const left = (d.defusers as string[]).filter(id => a.alive.includes(id));
+  if ((d.round as number) > (d.rounds as number) || left.length === 0) return arenaFinish(ctx);
+  d.stage = 'plant'; d.cuts = {}; d.reveal = null; a.secret.trap = null; d.stageAt = now;
 }
 
 /** Temporizadores y señales que dispara el servidor. */
@@ -2051,13 +2324,6 @@ function arenaTick(ctx: Ctx, now: number) {
       if (elapsed >= 180000) arenaFinish(ctx);
       return;
     }
-    case 'sapos': {
-      for (const id of [...a.alive]) sapoAdvance(ctx, id, now);
-      const fin = d.finished as string[], out = d.out as Record<string, number>;
-      const pending = a.players.filter(id => !fin.includes(id) && out[id] === undefined);
-      if (pending.length === 0 || elapsed >= SAPOS_MAX_MS) arenaFinish(ctx);
-      return;
-    }
     case 'oeste': {
       if (!d.go) {
         if (now - (d.roundStartedAt as number) >= (d.goDelay as number ?? 2500)) { d.go = true; d.goAt = now; d.goDelay = 1500 + nextRandomInt(ctx, 3000); emit(ctx, 'arena_go', '🔔 ¡Campana! ¡Disparen!', undefined, { go: true }); }
@@ -2070,6 +2336,50 @@ function arenaTick(ctx: Ctx, now: number) {
     case 'penales': if (elapsed >= 40000) arenaFinish(ctx); return;
     case 'globos': if (elapsed >= 90000) arenaFinish(ctx); return;
     case 'dibujo': if (elapsed >= 60000) { a.ranking = [d.drawer as string]; arenaFinish(ctx); } return;
+    case 'sapos': {
+      for (const id of [...a.alive]) sapoAdvance(ctx, id, now);
+      const fin = d.finished as string[], out = d.out as Record<string, number>;
+      const pending = a.players.filter(id => !fin.includes(id) && out[id] === undefined);
+      if (pending.length === 0 || elapsed >= SAPOS_MAX_MS) arenaFinish(ctx);
+      return;
+    }
+    case 'cartas': {
+      const since = now - (d.stageAt as number);
+      if (d.stage === 'pick' && since >= CARTAS_PICK_MS) cartasToJudge(ctx, now);
+      else if (d.stage === 'judge' && since >= CARTAS_JUDGE_MS) {
+        const ids = a.secret.playedIds as string[];
+        const pick = nextRandomInt(ctx, ids.length);
+        a.scores[ids[pick]] += 1;
+        d.lastWin = { text: (d.played as string[])[pick], winner: ids[pick], black: d.black };
+        emit(ctx, 'arena_round', `El juez se durmió: gana al azar "${(d.played as string[])[pick]}" (${player(s, ids[pick]).name}).`, ids[pick], { winner: ids[pick] });
+        d.stage = 'result'; d.stageAt = now;
+      } else if (d.stage === 'result' && since >= CARTAS_RESULT_MS) cartasNext(ctx, now);
+      return;
+    }
+    case 'borrosa': {
+      if (d.reveal !== null && d.reveal !== undefined) { if (now >= (d.revealUntil as number)) { borrosaAdvance(ctx); if (s.arena?.stage === 'play') s.arena.data.roundStartedAt = now; } return; }
+      if (d.roundStartedAt === null) { d.roundStartedAt = now; return; }
+      if (now - (d.roundStartedAt as number) >= BORROSA_ROUND_MS) borrosaReveal(ctx, now, null);
+      return;
+    }
+    case 'cadena': {
+      if (d.reveal !== null && d.reveal !== undefined) { if (now >= (d.revealUntil as number)) { cadenaAdvance(ctx); if (s.arena?.stage === 'play') s.arena.data.roundStartedAt = now; } return; }
+      if (d.roundStartedAt === null) { d.roundStartedAt = now; return; }
+      if (now - (d.roundStartedAt as number) >= CADENA_ROUND_MS) cadenaReveal(ctx, now);
+      return;
+    }
+    case 'ruleta': {
+      if (now - (d.turnStartedAt as number) >= RULETA_TURN_MS) { emit(ctx, 'arena_round', `${player(s, d.turn as string).name} tardó demasiado: aprieta solo.`, d.turn as string, {}); ruletaShoot(ctx, d.turn as string, now); }
+      if (elapsed >= 120000) arenaFinish(ctx);
+      return;
+    }
+    case 'bomba2': {
+      const since = now - (d.stageAt as number);
+      if (d.stage === 'plant' && since >= BOMBA2_PLANT_MS) { a.secret.trap = nextRandomInt(ctx, d.wires as number); d.stage = 'cut'; d.stageAt = now; emit(ctx, 'arena_round', 'El saboteador se durmió: la trampa se plantó al azar. ¡A cortar!', undefined, { planted: true }); }
+      else if (d.stage === 'cut' && since >= BOMBA2_CUT_MS) bomba2Resolve(ctx, now);
+      else if (d.stage === 'reveal' && since >= BOMBA2_REVEAL_MS) bomba2Next(ctx, now);
+      return;
+    }
   }
 }
 
@@ -2082,6 +2392,8 @@ function arenaRanking(a: NonNullable<GameState['arena']>): string[] {
     case 'cana': return byScoreDesc(id => (d.taps as Record<string, number>)[id] ?? 0);
     case 'barra': return byScoreDesc(id => { const at = (d.attempts as Record<string, number[]>)[id]; return at.length ? Math.min(...at) : 999; }, true);
     case 'cuantos': return byScoreDesc(id => { const v = (d.answers as Record<string, number>)[id]; return v === undefined ? 1e12 : Math.abs(v - (a.secret.answer as number)); }, true);
+    case 'penales': return byScoreDesc(id => (d.goals as Record<string, number>)[id] * 1000 + (d.shots as Record<string, { power: number }[]>)[id].reduce((n, x) => n + x.power, 0));
+    case 'bomba': case 'oeste': case 'rayo': case 'globos': case 'ruleta': return [...a.alive, ...[...a.eliminated].reverse()];
     case 'sapos': {
       const fin = d.finished as string[], out = d.out as Record<string, number>, last = d.lastRow as Record<string, number>, ft = d.finishTime as Record<string, number>;
       const finished = [...fin].sort((x, y) => (ft[x] ?? 0) - (ft[y] ?? 0));
@@ -2089,8 +2401,8 @@ function arenaRanking(a: NonNullable<GameState['arena']>): string[] {
       const fell = Object.keys(out).sort((x, y) => out[y] - out[x]);
       return [...finished, ...running, ...fell];
     }
-    case 'penales': return byScoreDesc(id => (d.goals as Record<string, number>)[id] * 1000 + (d.shots as Record<string, { power: number }[]>)[id].reduce((n, x) => n + x.power, 0));
-    case 'bomba': case 'oeste': case 'rayo': case 'globos': return [...a.alive, ...[...a.eliminated].reverse()];
+    case 'cartas': case 'borrosa': case 'cadena': return byScoreDesc(id => a.scores[id]);
+    case 'bomba2': return byScoreDesc(id => a.scores[id] * 10 + (id === d.saboteur ? 0 : 1));
     case 'dibujo': return a.ranking ?? [d.drawer as string];
   }
   return [...a.players];

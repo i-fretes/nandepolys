@@ -92,7 +92,8 @@ export type TurnPhase =
 // La Arena: mini-juegos para todos
 // ---------------------------------------------------------------------------
 export type ArenaGame =
-  | 'trivia' | 'cana' | 'barra' | 'cuantos' | 'bomba' | 'sapos' | 'oeste' | 'rayo' | 'penales' | 'globos' | 'dibujo';
+  | 'trivia' | 'cana' | 'barra' | 'cuantos' | 'bomba' | 'sapos' | 'oeste' | 'rayo' | 'penales' | 'globos' | 'dibujo'
+  | 'cartas' | 'borrosa' | 'cadena' | 'ruleta' | 'bomba2';
 
 export interface ArenaState {
   stage: 'vote' | 'play' | 'done';

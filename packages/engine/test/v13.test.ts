@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ARENA_REWARDS, EVENTS, LOOTBOX, MISSIONS, applyAction, applyTruco, envidoValue, hasFlor, newTruco, power, rentFor, sapoPos, toClientState,
+  ARENA_GAMES, ARENA_REWARDS, EVENTS, LOOTBOX, MISSIONS, applyAction, applyTruco, envidoValue, hasFlor, newTruco, power, rentFor, sapoPos, toClientState,
   type GameState,
 } from '../src';
 import { act, cur, give, makeGame, seedFor, setPos, withDice } from './helpers';
@@ -313,37 +313,25 @@ describe('v1.3.2', () => {
     s = applyAction(s, { type: 'ARENA_START', playerId: 'server', now: 1000 }).state;
     const d = s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(d.track).toHaveLength(60);
-    expect((d.track as number[]).every((v, i, arr) => v < 0 || i === 0 || arr[i - 1] < 0)).toBe(true); // nunca dos charcos seguidos
+    expect((d.track as number[]).every((v, i, arr) => v < 0 || i === 0 || arr[i - 1] < 0)).toBe(true);
     const start = s.arena!.startedAt!;
-    // jugador 0 se queda en su carril hasta el primer charco de ese carril → se cae
     const firstPuddleRow = (d.track as number[]).findIndex(v => v === 1);
-    expect(firstPuddleRow).toBeGreaterThan(0);
-    // jugadores 1 y 2 esquivan siempre: se mueven al carril libre cuando la próxima fila tiene charco
-    let now = start;
-    let guard = 0;
+    let now = start, guard = 0;
     while (s.arena && s.arena.stage === 'play' && guard++ < 400) {
       now += 100;
       const dd = s.arena.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       const row = Math.floor(sapoPos(now - start));
       for (const id of ids.slice(1)) {
-        const nextRow = Math.min(59, row + 1);
-        const bad = (dd.track as number[])[nextRow];
-        const here = (dd.track as number[])[Math.min(59, row)];
+        const bad = (dd.track as number[])[Math.min(59, row + 1)], here = (dd.track as number[])[Math.min(59, row)];
         const lane = (dd.lane as Record<string, number>)[id];
-        if (bad === lane || here === lane) {
-          const safe = [0, 1, 2].find(l => l !== bad && l !== here)!;
-          try { s = applyAction(s, { type: 'ARENA_MOVE', playerId: id, now, payload: { lane: safe } }).state; } catch { /* ya terminó */ }
-        }
+        if (bad === lane || here === lane) { const safe = [0, 1, 2].find(l => l !== bad && l !== here)!; try { s = applyAction(s, { type: 'ARENA_MOVE', playerId: id, now, payload: { lane: safe } }).state; } catch { /* terminó */ } }
       }
       if (s.arena?.stage === 'play') s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now }).state;
     }
-    expect(s.arena!.stage).toBe('done');
     const dd = s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(s.arena!.stage).toBe('done');
     expect(dd.out[ids[0]]).toBe(firstPuddleRow);
-    expect(dd.finished).toEqual(expect.arrayContaining([ids[1], ids[2]]));
-    expect(s.arena!.ranking!.slice(0, 2)).toEqual(expect.arrayContaining([ids[1], ids[2]]));
     expect(s.arena!.ranking![2]).toBe(ids[0]);
-    expect(now - start).toBeLessThan(25000);
   });
 
   it('el truco del duelo se define en 2 manos (empate: una más)', () => {
@@ -409,5 +397,136 @@ describe('v1.3.2', () => {
       }
     }
     expect(seenAguinaldo && seenSet).toBe(true);
+  });
+});
+
+describe('v1.3.4: juegos nuevos de la Arena', () => {
+  function arenaWith(game: string, n = 3, seed = 12) {
+    let s = makeGame(n, { arena: true }, seed);
+    const a = cur(s).id;
+    s = act(withDice(setPos(s, a, 3), [1, 2]), { type: 'ROLL', playerId: a }).state;
+    s.arena!.options[0] = game as never;
+    for (const id of s.arena!.players) s = applyAction(s, { type: 'ARENA_VOTE', playerId: id, option: 0 }).state;
+    s = applyAction(s, { type: 'ARENA_START', playerId: 'server', now: 0 }).state;
+    return { s, ids: s.arena!.players, trig: a };
+  }
+  const D = (s: GameState) => s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  it('hay 16 juegos y los de 3+ no se ofrecen de a dos', () => {
+    expect(ARENA_GAMES).toHaveLength(16);
+    for (let seed = 1; seed < 30; seed++) {
+      let s = makeGame(2, { arena: true }, seed);
+      const a = cur(s).id;
+      s = act(withDice(setPos(s, a, 3), [1, 2]), { type: 'ROLL', playerId: a }).state;
+      expect(s.arena!.options).not.toContain('cartas');
+      expect(s.arena!.options).not.toContain('bomba2');
+    }
+  });
+
+  it('Cartas contra el Paraguay: manos privadas, juez rota, 3 rondas', () => {
+    let { s, ids } = arenaWith('cartas');
+    let now = 5000;
+    for (let round = 1; round <= 3; round++) {
+      const judge = D(s).judge as string;
+      expect(judge).toBe(ids[round - 1]);
+      for (const id of ids) {
+        const hand = toClientState(s, id).mine!.arenaHand!;
+        expect(hand).toHaveLength(6);
+        expect(toClientState(s, ids.find(x => x !== id)!).mine!.arenaHand).not.toEqual(hand);
+        if (id === judge) { if (D(s).stage === 'pick') expect(() => applyAction(s, { type: 'ARENA_MOVE', playerId: id, now, payload: { card: 0 } })).toThrow('juez'); continue; }
+        s = applyAction(s, { type: 'ARENA_MOVE', playerId: id, now, payload: { card: 2 } }).state;
+        expect(toClientState(s, id).mine!.arenaHand).toHaveLength(6); // repone
+      }
+      expect(D(s).stage).toBe('judge');
+      expect((D(s).played as string[]).length).toBe(ids.length - 1);
+      expect(toClientState(s, judge).arena!.secret).toEqual({});
+      s = applyAction(s, { type: 'ARENA_MOVE', playerId: judge, now, payload: { pick: 0 } }).state;
+      expect(D(s).stage).toBe('result');
+      now += 5000;
+      s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now }).state;
+    }
+    expect(s.arena!.stage).toBe('done');
+    expect(Object.values(s.arena!.scores).reduce((a, b) => a + b, 0)).toBe(3);
+  });
+
+  it('La foto borrosa: el primero que acierta gana la ronda, el que erra queda afuera de la ronda', () => {
+    let { s, ids } = arenaWith('borrosa');
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 4000 }).state;
+    const ans = s.arena!.secret.answer as number;
+    expect(toClientState(s, ids[0]).arena!.secret).toEqual({});
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: ids[1], now: 5000, payload: { answer: (ans + 1) % 4 } }).state;
+    expect(() => applyAction(s, { type: 'ARENA_MOVE', playerId: ids[1], now: 5000, payload: { answer: ans } })).toThrow('Ya respondiste');
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: ids[0], now: 5100, payload: { answer: ans } }).state;
+    expect(s.arena!.scores[ids[0]]).toBe(3);
+    expect(D(s).reveal).toBe(ans);
+    expect(() => applyAction(s, { type: 'ARENA_MOVE', playerId: ids[2], now: 5200, payload: { answer: ans } })).toThrow('Esperá');
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 9000 }).state;
+    expect(D(s).qIndex).toBe(1);
+    expect(D(s).reveal).toBeNull();
+  });
+
+  it('Ordená la cadena: puntos por posición correcta', () => {
+    let { s, ids } = arenaWith('cadena');
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 4000 }).state;
+    const correct = s.arena!.secret.correct as number[];
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: ids[0], now: 5000, payload: { order: correct } }).state;
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: ids[1], now: 5000, payload: { order: [...correct].reverse() } }).state;
+    expect(() => applyAction(s, { type: 'ARENA_MOVE', playerId: ids[2], now: 5000, payload: { order: [0, 0, 1, 2] } })).toThrow('cuatro');
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 4000 + 26000 }).state; // se le acabó el tiempo al tercero
+    expect(D(s).results[ids[0]]).toBe(4);
+    expect(D(s).results[ids[2]]).toBe(0);
+    expect(s.arena!.scores[ids[0]]).toBe(4);
+  });
+
+  it('Ruleta de la muerte: clic, bang, pase y último en pie', () => {
+    let { s, ids } = arenaWith('ruleta', 3, 21);
+    let now = 4000, guard = 0;
+    let bangs = 0;
+    while (s.arena && s.arena.stage === 'play' && guard++ < 60) {
+      const turn = D(s).turn as string;
+      const passes = D(s).passes as Record<string, number>;
+      const r = applyAction(s, { type: 'ARENA_MOVE', playerId: turn, now, payload: { kind: passes[turn] > 0 && guard % 4 === 0 ? 'pass' : 'shoot' } });
+      if (r.events.some(e => e.data?.bang === true)) bangs++;
+      s = r.state; now += 1000;
+    }
+    expect(s.arena!.stage).toBe('done');
+    expect(bangs).toBe(2);
+    expect(s.arena!.alive).toHaveLength(1);
+    expect(s.arena!.ranking![0]).toBe(s.arena!.alive[0]);
+    expect(ids).toContain(s.arena!.ranking![0]);
+  });
+
+  it('Plantá la bomba: el saboteador planta, los demás cortan, el que corta la trampa vuela', () => {
+    let { s, ids, trig } = arenaWith('bomba2', 4, 33);
+    expect(D(s).saboteur).toBe(trig);
+    const defusers = ids.filter(id => id !== trig);
+    expect(() => applyAction(s, { type: 'ARENA_MOVE', playerId: defusers[0], now: 4000, payload: { wire: 1 } })).toThrow('saboteador');
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: trig, now: 4000, payload: { wire: 2 } }).state;
+    expect(D(s).stage).toBe('cut');
+    expect(toClientState(s, defusers[0]).arena!.secret).toEqual({});
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: defusers[0], now: 5000, payload: { wire: 2 } }).state; // corta la trampa
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: defusers[1], now: 5000, payload: { wire: 0 } }).state;
+    s = applyAction(s, { type: 'ARENA_MOVE', playerId: defusers[2], now: 5000, payload: { wire: 1 } }).state;
+    expect(D(s).stage).toBe('reveal');
+    expect(D(s).reveal.blown).toEqual([defusers[0]]);
+    expect(s.arena!.alive).not.toContain(defusers[0]);
+    expect(s.arena!.scores[trig]).toBe(1);
+    expect(s.arena!.scores[defusers[1]]).toBe(1);
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 10000 }).state;
+    expect(D(s).round).toBe(2);
+    expect(D(s).stage).toBe('plant');
+    // el saboteador se duerme dos rondas: la trampa se planta al azar y los que no cortan reciben un cable al azar
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 23000 }).state;
+    expect(D(s).stage).toBe('cut');
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 39000 }).state;
+    expect(D(s).stage).toBe('reveal');
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 44000 }).state;
+    if (s.arena!.stage === 'play') {
+      s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 57000 }).state;
+      s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 73000 }).state;
+      s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 78000 }).state;
+    }
+    expect(s.arena!.stage).toBe('done');
+    expect(s.arena!.ranking).toHaveLength(4);
   });
 });

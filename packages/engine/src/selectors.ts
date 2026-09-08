@@ -1,4 +1,5 @@
 import { BOARD, groupTiles, isProperty, tile } from './board';
+import { WHITE_CARDS } from './arena-data';
 import type { GameState, Player, PropertyTile, StreetTile, Group } from './types';
 
 export function player(state: GameState, id: string): Player {
@@ -178,7 +179,7 @@ export function ranking(state: GameState): { playerId: string; netWorth: number 
 export type ClientState = Omit<GameState, 'decks' | 'seed'> & {
   deckCounts: Record<'chance' | 'community', number>;
   /** Datos privados del jugador que mira (mano de truco, etc.) */
-  mine: { trucoHand: { r: number; s: string }[] | null; drawWord: string | null } | null;
+  mine: { trucoHand: { r: number; s: string }[] | null; drawWord: string | null; arenaHand: string[] | null } | null;
 };
 
 /**
@@ -189,8 +190,12 @@ export function toClientState(s: GameState, viewerId?: string): ClientState {
   const { decks, seed: _seed, ...rest } = s;
   const challenge = rest.challenge ? { ...rest.challenge, secret: {} } : null;
   const arena = rest.arena ? { ...rest.arena, secret: {} } : null;
-  let mine: ClientState['mine'] = viewerId ? { trucoHand: null, drawWord: null } : null;
+  let mine: ClientState['mine'] = viewerId ? { trucoHand: null, drawWord: null, arenaHand: null } : null;
   if (mine && rest.arena?.game === 'dibujo' && rest.arena.data.drawer === viewerId) mine.drawWord = String(rest.arena.secret.word ?? '');
+  if (mine && rest.arena?.game === 'cartas' && viewerId) {
+    const hands = rest.arena.secret.hands as Record<string, number[]> | undefined;
+    mine.arenaHand = hands?.[viewerId]?.map(i => WHITE_CARDS[i]) ?? null;
+  }
   let duel = rest.duel;
   if (duel) {
     const data = { ...duel.data };

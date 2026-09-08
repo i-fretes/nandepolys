@@ -26,6 +26,11 @@ function randomAction(s: GameState, rnd: () => number, now = 0): Action | null {
       case 'cuantos': return { type: 'ARENA_MOVE', playerId: who, now, payload: { value: Math.floor(rnd() * 1000) } };
       case 'bomba': return { type: 'ARENA_MOVE', playerId: d.turn, now, payload: { word: `${d.syllable}${pick(['a', 'e', 'o', 'ar', 'ero', 'ito'])}${Math.floor(rnd() * 99)}`, valid: rnd() < 0.7 } };
       case 'sapos': return { type: 'ARENA_MOVE', playerId: who, now, payload: { side: rnd() < 0.5 ? 'L' : 'R' } };
+      case 'cartas': return d.stage === 'judge' ? { type: 'ARENA_MOVE', playerId: d.judge, now, payload: { pick: Math.floor(rnd() * Math.max(1, (d.played ?? []).length)) } } : { type: 'ARENA_MOVE', playerId: who, now, payload: { card: Math.floor(rnd() * 6) } };
+      case 'borrosa': return { type: 'ARENA_MOVE', playerId: who, now, payload: { answer: Math.floor(rnd() * 4) } };
+      case 'cadena': { const o = [0, 1, 2, 3].sort(() => rnd() - 0.5); return { type: 'ARENA_MOVE', playerId: who, now, payload: { order: o } }; }
+      case 'ruleta': return { type: 'ARENA_MOVE', playerId: d.turn, now, payload: { kind: pick(['shoot', 'shoot', 'spin', 'pass']) } };
+      case 'bomba2': return { type: 'ARENA_MOVE', playerId: d.stage === 'plant' ? d.saboteur : who, now, payload: { wire: Math.floor(rnd() * 4) } };
       case 'oeste': { const targets = a.alive.filter(x => x !== who); return targets.length ? { type: 'ARENA_MOVE', playerId: who, now, payload: { target: pick(targets) } } : { type: 'ARENA_TICK', playerId: 'server', now }; }
       case 'rayo': return { type: 'ARENA_MOVE', playerId: who, now, payload: { cell: Math.floor(rnd() * 9) } };
       case 'penales': return { type: 'ARENA_MOVE', playerId: who, now, payload: { power: Math.floor(rnd() * 100), dir: rnd() * 2 - 1 } };

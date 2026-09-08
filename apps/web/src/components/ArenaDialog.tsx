@@ -87,7 +87,7 @@ function Header({ a, subtitle }: { a: ArenaState; subtitle?: React.ReactNode }) 
   const def = ARENA_GAMES.find(x => x.id === a.game)!;
   const now = useServerNow(250);
   const left = Math.max(0, def.seconds - Math.floor((now - (a.startedAt ?? now)) / 1000));
-  const showTimer = a.game !== 'bomba' && a.game !== 'oeste' && a.game !== 'rayo' && a.game !== 'globos';
+  const showTimer = !['bomba', 'oeste', 'rayo', 'globos', 'cartas', 'borrosa', 'cadena', 'ruleta', 'bomba2'].includes(a.game ?? '');
   return (
     <div className="flex items-center gap-3">
       <div className="text-3xl">{def.icon}</div>
@@ -153,6 +153,11 @@ function Play({ a, meId }: { a: ArenaState; meId: string | null }) {
     case 'penales': return <Penales {...props} />;
     case 'globos': return <Globos {...props} />;
     case 'dibujo': return <Dibujo {...props} />;
+    case 'cartas': return <Cartas {...props} />;
+    case 'borrosa': return <Borrosa {...props} />;
+    case 'cadena': return <Cadena {...props} />;
+    case 'ruleta': return <Ruleta {...props} />;
+    case 'bomba2': return <Bomba2 {...props} />;
   }
   return null;
 }
@@ -343,6 +348,7 @@ function Bomba({ a, meId, participating }: GP) {
 }
 
 // ---------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------
 function Sapos({ a, meId, participating }: GP) {
   const act = useAct();
   const d = a.data as D;
@@ -378,7 +384,6 @@ function Sapos({ a, meId, participating }: GP) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [step]);
-  // Ventana visible: unas filas por delante del sapo (la pista "baja" hacia el jugador)
   const ROWS = 9;
   const first = Math.max(0, Math.floor(pos) - 1);
   const rows = Array.from({ length: ROWS }, (_, i) => first + i).filter(r => r < goal + 2);
@@ -399,7 +404,8 @@ function Sapos({ a, meId, participating }: GP) {
                   {puddle && <span className="puddle-ico">💧</span>}
                   {here.map(f => (
                     <span key={f.id} className={`frog ${f.out ? 'splash' : ''} ${f.id === meId ? 'mine' : ''}`} style={{ ['--c' as string]: f.p.color }} title={f.p.name}>
-                      {f.out ? '💦' : '🐸'}<i>{f.p.name}</i>
+                      {f.out ? '💦' : '🐸'}
+                      {f.id === meId ? <i>vos</i> : here.length <= 2 ? <i>{f.p.name}</i> : null}
                     </span>
                   ))}
                 </div>
@@ -650,6 +656,234 @@ function DrawerWord() {
   // El servidor solo revela la palabra al dibujante a través de su vista privada (state.mine.drawWord)
   const word = useStore(s => (s.state?.mine as { drawWord?: string } | null)?.drawWord);
   return <span className="text-py-red">{word ? word.toUpperCase() : '…'}</span>;
+}
+
+
+// ---------------------------------------------------------------------------------------
+function StageTimer({ from, ms }: { from: number | null | undefined; ms: number }) {
+  const now = useServerNow(250);
+  if (!from) return null;
+  const left = Math.max(0, Math.ceil((from + ms - now) / 1000));
+  return <span className={`rounded-full px-2 py-0.5 font-mono text-xs font-bold ${left <= 5 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-ink/60'}`}>{left}s</span>;
+}
+
+// ---------------------------------------------------------------------------------------
+function Cartas({ a, meId, participating }: GP) {
+  const act = useAct();
+  const d = a.data as D;
+  const state = useStore(s => s.state)!;
+  const hand = useStore(s => s.state?.mine?.arenaHand ?? null);
+  const judge = state.players.find(p => p.id === d.judge);
+  const isJudge = meId === d.judge;
+  const picked = ((d.pickedIds ?? []) as string[]).includes(meId ?? '');
+  const played = (d.played ?? []) as string[];
+  const [sel, setSel] = useState<number | null>(null);
+  useEffect(() => { setSel(null); }, [d.round, d.stage]);
+  const fill = (card: string) => (d.black as string).includes('____') ? (d.black as string).replace('____', card) : `${d.black} ${card}`;
+  return (
+    <div>
+      <Header a={a} subtitle={`Ronda ${d.round} de ${d.rounds} · Juez: ${judge?.name}. ${isJudge ? 'Esperá las cartas y elegí la más graciosa.' : 'Completá la frase con la carta más graciosa de tu mano.'}`} />
+      <Players a={a} render={id => `${a.scores[id] ?? 0} pt${id === d.judge ? ' 👨‍⚖️' : ((d.pickedIds ?? []) as string[]).includes(id) ? ' ✔' : ''}`} />
+      <div className="mt-3 flex items-start gap-2">
+        <div className="black-card">{d.black}</div>
+        <div className="shrink-0 pt-1"><StageTimer from={d.stageAt} ms={d.stage === 'pick' ? 35000 : d.stage === 'judge' ? 25000 : 4000} /></div>
+      </div>
+      {d.stage === 'pick' && !isJudge && participating && hand && (
+        <div className="mt-3">
+          <div className="mb-1 text-xs font-bold text-ink/60">{picked ? 'Ya jugaste. Esperando a los demás…' : 'Tu mano (tocá una carta y confirmá):'}</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {hand.map((c, i) => <button key={i} data-white={i} disabled={picked} onClick={() => setSel(i)} className={`white-card ${sel === i ? 'picked' : ''}`}>{c}</button>)}
+          </div>
+          {sel !== null && !picked && <div className="mt-2 rounded-xl bg-slate-100 p-2 text-sm italic">"{fill(hand[sel])}"</div>}
+          <button data-play-card className="btn-primary mt-2 w-full" disabled={sel === null || picked} onClick={() => { move(act, { card: sel }); sfx.card(); }}>Jugar esta carta</button>
+        </div>
+      )}
+      {d.stage === 'pick' && (isJudge || !participating) && <div className="mt-4 text-center text-sm text-ink/60 animate-pulse">Los demás están eligiendo su carta… ({((d.pickedIds ?? []) as string[]).length}/{a.players.length - 1})</div>}
+      {d.stage === 'judge' && (
+        <div className="mt-3">
+          <div className="mb-1 text-xs font-bold text-ink/60">{isJudge ? 'Elegí la más graciosa (no sabés de quién es):' : `${judge?.name} está eligiendo…`}</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {played.map((c, i) => <button key={i} data-judge-pick={i} disabled={!isJudge} onClick={() => { move(act, { pick: i }); sfx.win(); }} className={`white-card text-left ${isJudge ? 'hover:border-py-red' : ''}`}><span className="text-ink/50">{fill(c)}</span></button>)}
+          </div>
+        </div>
+      )}
+      {d.stage === 'result' && d.lastWin && (
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-4 rounded-2xl bg-amber-50 p-4 text-center">
+          <div className="text-xs font-bold uppercase text-amber-700">Ganó la ronda</div>
+          <div className="mt-1 text-lg font-black">"{fill((d.lastWin as D).text)}"</div>
+          <div className="mt-1 text-sm">de <b>{state.players.find(p => p.id === (d.lastWin as D).winner)?.name}</b> 🏅</div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+function Borrosa({ a, meId, participating }: GP) {
+  const act = useAct();
+  const d = a.data as D;
+  const state = useStore(s => s.state)!;
+  const now = useServerNow(80);
+  const answered = (d.answered ?? {}) as Record<string, number>;
+  const reveal = (d.reveal ?? null) as number | null;
+  const started = (d.roundStartedAt as number | null) ?? now;
+  const t = Math.min(1, Math.max(0, (now - started) / 12000));
+  const blur = reveal !== null ? 0 : Math.max(0, 28 * (1 - t));
+  const mine = meId ? answered[meId] : undefined;
+  const canAnswer = participating && mine === undefined && reveal === null;
+  return (
+    <div>
+      <Header a={a} subtitle={`Imagen ${(d.qIndex ?? 0) + 1} de ${d.rounds} · Se destapa en 12 s. El primero que toca la respuesta correcta gana 3 puntos; si errás, quedás afuera de esta imagen.`} />
+      <Players a={a} render={id => `${a.scores[id] ?? 0} pts${answered[id] === undefined ? '' : reveal !== null && answered[id] === reveal ? ' ✔' : ' ✘ falló'}`} />
+      <div className="mt-3 flex items-center justify-center">
+        <div className="blur-box"><span style={{ filter: `blur(${blur}px)`, transform: `scale(${1 + (1 - t) * 0.3})` }}>{d.emoji}</span></div>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {((d.options ?? []) as string[]).map((o, i) => {
+          const who = Object.entries(answered).filter(([, v]) => v === i).map(([id]) => state.players.find(p => p.id === id)!);
+          const right = reveal === i;
+          return (
+            <button key={i} data-blur-opt={i} disabled={!canAnswer} onClick={() => { move(act, { answer: i }); sfx.tick(); }}
+              className={`rounded-xl border-2 px-3 py-3 text-left font-semibold ${right ? 'border-emerald-500 bg-emerald-50' : mine === i ? 'border-red-400 bg-red-50' : 'border-black/10 bg-white hover:border-py-blue/50'} disabled:opacity-80`}>
+              {o}
+              {who.length > 0 && <span className="ml-2 inline-flex gap-1 align-middle">{who.map(p => <span key={p.id} className="grid h-4 w-4 place-items-center rounded-full bg-white text-[10px]" style={{ boxShadow: `0 0 0 2px ${p.color}` }}>{tokenEmoji(p.token)}</span>)}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {reveal !== null && <div className="mt-2 text-center text-sm font-bold">{d.winner ? <span className="text-emerald-700">🏅 {state.players.find(p => p.id === d.winner)?.name} adivinó primero</span> : <span className="text-ink/60">Nadie adivinó</span>}</div>}
+      {mine !== undefined && reveal === null && <div className="mt-2 text-center text-xs text-red-600">Fallaste: quedás afuera de esta imagen.</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+function Cadena({ a, meId, participating }: GP) {
+  const act = useAct();
+  const d = a.data as D;
+  const state = useStore(s => s.state)!;
+  const shown = (d.shown ?? []) as string[];
+  const orders = (d.orders ?? {}) as Record<string, number[]>;
+  const reveal = (d.reveal ?? null) as number[] | null;
+  const results = (d.results ?? null) as Record<string, number> | null;
+  const [order, setOrder] = useState<number[]>([]);
+  useEffect(() => { setOrder([]); }, [d.qIndex]);
+  const mine = meId ? orders[meId] : undefined;
+  const done = !!mine;
+  const toggle = (i: number) => { if (done || reveal) return; setOrder(o => (o.includes(i) ? o.filter(x => x !== i) : [...o, i])); sfx.tick(); };
+  return (
+    <div>
+      <Header a={a} subtitle={`Cadena ${(d.qIndex ?? 0) + 1} de ${d.rounds} · Tocá las cuatro en el orden correcto (1º, 2º, 3º, 4º). Un punto por cada posición bien.`} />
+      <Players a={a} render={id => `${a.scores[id] ?? 0} pts${results ? ` (+${results[id] ?? 0})` : orders[id] ? ' ✔' : ''}`} />
+      <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-800 p-4 text-white">
+        <div className="text-lg font-bold">🔗 {d.title}</div>
+        {!reveal && <StageTimer from={d.roundStartedAt} ms={25000} />}
+      </div>
+      {reveal && <div className="mt-2 text-center text-xs font-bold text-emerald-700">El círculo verde muestra el orden correcto; la etiqueta, lo que pusiste vos.</div>}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {shown.map((item, i) => {
+          const pos = reveal ? reveal.indexOf(i) : (mine ? mine.indexOf(i) : order.indexOf(i));
+          const ok = reveal && mine ? mine[reveal.indexOf(i)] === i : null;
+          return (
+            <button key={i} data-chain={i} disabled={done || !!reveal || !participating} onClick={() => toggle(i)}
+              className={`flex items-center gap-3 rounded-xl border-2 px-3 py-3 text-left font-semibold ${reveal ? (ok ? 'border-emerald-500 bg-emerald-50' : 'border-red-300 bg-red-50') : pos >= 0 ? 'border-py-blue bg-blue-50' : 'border-black/10 bg-white'}`}>
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black ${reveal ? 'bg-emerald-600 text-white' : pos >= 0 ? 'bg-py-blue text-white' : 'bg-slate-100 text-ink/40'}`}
+                title={reveal ? 'Posición correcta' : 'Tu posición'}>{pos >= 0 ? `${pos + 1}º` : '·'}</span>
+              <span className="flex-1">{item}</span>
+              {reveal && mine && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${ok ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'}`}>vos: {mine.indexOf(i) + 1}º {ok ? '✔' : '✘'}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {!done && !reveal && participating && <button data-send-chain className="btn-primary mt-3 w-full" disabled={order.length !== shown.length} onClick={() => move(act, { order })}>Confirmar orden {order.length}/{shown.length}</button>}
+      {done && !reveal && <div className="mt-2 text-center text-sm text-ink/60">Listo. Esperando a los demás…</div>}
+      {reveal && results && <div className="mt-2 text-center text-sm font-bold">{a.players.map(id => `${state.players.find(p => p.id === id)?.name}: ${results[id]}/4`).join(' · ')}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+function Ruleta({ a, meId, participating }: GP) {
+  const act = useAct();
+  const d = a.data as D;
+  const state = useStore(s => s.state)!;
+  const myTurn = participating && d.turn === meId && a.alive.includes(meId!);
+  const turnP = state.players.find(p => p.id === d.turn);
+  const passes = (d.passes ?? {}) as Record<string, number>;
+  const evs = useStore(s => s.arenaEvents);
+  const last = [...evs].reverse().find(e => e.type === 'arena_round' && e.data.bang !== undefined);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => { if (last?.data.bang) { setFlash(true); const t = setTimeout(() => setFlash(false), 900); return () => clearTimeout(t); } }, [last?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const clicks = (d.clicks as number) ?? 0;
+  const chance = Math.round((1 / (6 - clicks)) * 100);
+  return (
+    <div className={flash ? 'shake-hard' : ''}>
+      <Header a={a} subtitle="Un revólver, seis recámaras, una bala. Cada clic vacío sube la probabilidad. Apretá, girá el tambor (vuelve a 1 en 6) o pasá (una sola vez). Último en pie gana." />
+      <Players a={a} render={id => (a.alive.includes(id) ? `${d.turn === id ? '👉 ' : ''}${passes[id] > 0 ? 'con pase' : 'sin pase'}` : '💀 afuera')} />
+      <div className={`mt-4 rounded-2xl p-5 text-center text-white ${flash ? 'bg-red-700' : 'bg-slate-900'}`}>
+        <div className="text-6xl">{flash ? '💥' : '🔫'}</div>
+        <div className="mt-2 flex justify-center gap-2">{Array.from({ length: 6 }, (_, i) => <span key={i} className={`chamber ${i < clicks ? 'used' : ''}`} />)}</div>
+        <div className="mt-2 text-sm">{clicks} clic{clicks === 1 ? '' : 's'} vacío{clicks === 1 ? '' : 's'} · próxima: <b className={chance >= 34 ? 'text-red-400' : 'text-emerald-300'}>{chance} %</b> de bala</div>
+        <div className="mt-2 text-sm font-bold text-yellow-300">{myTurn ? '¡Te toca!' : `Turno de ${turnP?.name}…`}</div>
+        {last && <div className="mt-1 text-xs text-white/70">{last.text}</div>}
+      </div>
+      {myTurn && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button data-ruleta="shoot" className="duel-btn opp" onClick={() => { move(act, { kind: 'shoot' }); sfx.drum(); }}>🔫 Apretar<span className="text-xs font-semibold opacity-80">{chance} % de bala</span></button>
+          <button data-ruleta="spin" className="duel-btn self" onClick={() => { move(act, { kind: 'spin' }); sfx.whoosh(); }}>🔄 Girar y apretar<span className="text-xs font-semibold opacity-80">vuelve a 17 %</span></button>
+          <button data-ruleta="pass" className="duel-btn" style={{ background: passes[meId!] > 0 ? '#475569' : '#94a3b8' }} disabled={!(passes[meId!] > 0)} onClick={() => move(act, { kind: 'pass' })}>🎟️ Pasar<span className="text-xs font-semibold opacity-80">{passes[meId!] > 0 ? 'una sola vez' : 'ya lo usaste'}</span></button>
+        </div>
+      )}
+      {!myTurn && <StageTimer from={d.turnStartedAt} ms={12000} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+const WIRE = [{ n: 'rojo', c: '#dc2626' }, { n: 'azul', c: '#2563eb' }, { n: 'verde', c: '#16a34a' }, { n: 'amarillo', c: '#eab308' }];
+function Bomba2({ a, meId, participating }: GP) {
+  const act = useAct();
+  const d = a.data as D;
+  const state = useStore(s => s.state)!;
+  const sab = state.players.find(p => p.id === d.saboteur);
+  const isSab = meId === d.saboteur;
+  const cuts = (d.cuts ?? {}) as Record<string, number>;
+  const reveal = (d.reveal ?? null) as { trap: number; cuts: Record<string, number>; blown: string[] } | null;
+  const alive = participating && a.alive.includes(meId!);
+  const canPlant = isSab && d.stage === 'plant';
+  const canCut = !isSab && alive && d.stage === 'cut' && cuts[meId!] === undefined;
+  const [chosen, setChosen] = useState<number | null>(null);
+  useEffect(() => { setChosen(null); }, [d.round, d.stage]);
+  return (
+    <div>
+      <Header a={a} subtitle={`Ronda ${d.round} de ${d.rounds} · Saboteador: ${sab?.name}. ${isSab ? 'Elegí en secreto qué cable es la trampa.' : 'Cortá un cable. Si es la trampa, volás.'} Puntos: saboteador +1 por cada uno que vuela; desactivador +1 por ronda que sobrevive.`} />
+      <Players a={a} render={id => (id === d.saboteur ? `🧨 saboteador · ${a.scores[id] ?? 0} pt` : a.alive.includes(id) ? `${a.scores[id] ?? 0} pt${cuts[id] !== undefined && d.stage === 'cut' ? ' ✂️ cortó' : ''}` : '💀 voló')} />
+      <div className={`mt-4 rounded-2xl p-4 text-center text-white ${d.stage === 'reveal' && reveal?.blown.length ? 'bg-red-700' : 'bg-slate-900'}`}>
+        <div className="text-5xl">{d.stage === 'reveal' ? (reveal?.blown.length ? '💥' : '😮‍💨') : '🧨'}</div>
+        <div className="mt-1 text-sm font-bold">
+          {d.stage === 'plant' && (isSab ? 'Elegí el cable trampa' : `${sab?.name} está plantando la trampa…`)}
+          {d.stage === 'cut' && (isSab ? 'Están cortando cables…' : canCut ? '¡Cortá un cable!' : 'Ya cortaste. Esperando…')}
+          {d.stage === 'reveal' && reveal && (reveal.blown.length ? `El cable trampa era el ${WIRE[reveal.trap].n}. Volaron: ${reveal.blown.map(id => state.players.find(p => p.id === id)?.name).join(', ')}` : `El cable trampa era el ${WIRE[reveal.trap].n}. ¡Todos a salvo!`)}
+        </div>
+        <div className="mt-1"><StageTimer from={d.stageAt} ms={d.stage === 'plant' ? 12000 : d.stage === 'cut' ? 15000 : 4000} /></div>
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-2">
+        {WIRE.map((w, i) => {
+          const who = d.stage === 'reveal' && reveal ? Object.entries(reveal.cuts).filter(([, v]) => v === i).map(([id]) => state.players.find(p => p.id === id)!) : [];
+          const trap = d.stage === 'reveal' && reveal?.trap === i;
+          return (
+            <button key={i} data-wire={i} disabled={!(canPlant || canCut)} onClick={() => { setChosen(i); move(act, { wire: i }); sfx.tick(); }}
+              className={`wire ${chosen === i ? 'chosen' : ''} ${trap ? 'trap' : ''}`} style={{ ['--w' as string]: w.c }}>
+              <span className="wire-line" />
+              <span className="text-xs font-black capitalize">{w.n}</span>
+              {trap && <span className="text-lg">💣</span>}
+              <span className="flex flex-wrap justify-center gap-0.5">{who.map(p => <span key={p.id} className="grid h-5 w-5 place-items-center rounded-full bg-white text-xs" style={{ boxShadow: `0 0 0 2px ${p.color}` }}>{tokenEmoji(p.token)}</span>)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------------------

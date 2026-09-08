@@ -38,7 +38,6 @@ function arenaBot(s: GameState): Action | null {
       return { type: 'ARENA_MOVE', playerId: d.turn, now, payload: { word: w } };
     }
     case 'sapos': {
-      // esquiva el próximo charco (a veces se distrae y se cae)
       const track = (d.track ?? []) as number[];
       const elapsed = now - (a.startedAt ?? now);
       if (elapsed < 0) return null;
@@ -49,6 +48,35 @@ function arenaBot(s: GameState): Action | null {
         const next = track[Math.min(track.length - 1, row + 1)] ?? -1;
         if (next === lane && hash(s, row) > 0.15) return { type: 'ARENA_MOVE', playerId: b, now, payload: { lane: [0, 1, 2].find(l => l !== lane && l !== track[Math.min(track.length - 1, row)])! } };
       }
+      return null;
+    }
+    case 'cartas': {
+      if (d.stage === 'pick') { const b = bots.find(id => id !== d.judge && !(d.pickedIds ?? []).includes(id)); return b ? { type: 'ARENA_MOVE', playerId: b, now, payload: { card: Math.floor(hash(s, b.length + (d.round ?? 0)) * 6) } } : null; }
+      if (d.stage === 'judge' && bots.includes(d.judge) && now - (d.stageAt ?? now) > 2500) return { type: 'ARENA_MOVE', playerId: d.judge, now, payload: { pick: Math.floor(hash(s, 9) * Math.max(1, (d.played ?? []).length)) } };
+      return null;
+    }
+    case 'borrosa': {
+      if (d.reveal !== null && d.reveal !== undefined) return null;
+      if (now - (d.roundStartedAt ?? now) < 4000 + hash(s, 3) * 5000) return null; // el bot "piensa" un rato
+      const b = bots.find(id => d.answered?.[id] === undefined);
+      return b ? { type: 'ARENA_MOVE', playerId: b, now, payload: { answer: Math.floor(hash(s, b.length) * 4) } } : null;
+    }
+    case 'cadena': {
+      if (d.reveal !== null && d.reveal !== undefined) return null;
+      const b = bots.find(id => !d.orders?.[id]);
+      if (!b) return null;
+      const o = [0, 1, 2, 3]; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(hash(s, i + b.length) * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; }
+      return { type: 'ARENA_MOVE', playerId: b, now, payload: { order: o } };
+    }
+    case 'ruleta': {
+      if (!bots.includes(d.turn)) return null;
+      if (now - (d.turnStartedAt ?? now) < 1500) return null;
+      const risky = (d.clicks ?? 0) >= 3 && (d.passes?.[d.turn] ?? 0) > 0;
+      return { type: 'ARENA_MOVE', playerId: d.turn, now, payload: { kind: risky ? 'pass' : (d.clicks ?? 0) >= 4 ? 'spin' : 'shoot' } };
+    }
+    case 'bomba2': {
+      if (d.stage === 'plant' && bots.includes(d.saboteur)) return { type: 'ARENA_MOVE', playerId: d.saboteur, now, payload: { wire: Math.floor(hash(s, 17 + (d.round ?? 0)) * 4) } };
+      if (d.stage === 'cut') { const b = bots.find(id => id !== d.saboteur && a.alive.includes(id) && d.cuts?.[id] === undefined); return b ? { type: 'ARENA_MOVE', playerId: b, now, payload: { wire: Math.floor(hash(s, 23 + b.length) * 4) } } : null; }
       return null;
     }
     case 'oeste': {

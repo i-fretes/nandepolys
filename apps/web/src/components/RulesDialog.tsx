@@ -72,12 +72,17 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
           <li><b>🎯 Frená la barra</b>: la aguja va y viene; frenala en el centro. 3 intentos, cuenta el mejor.</li>
           <li><b>🔢 ¿Cuántos hay?</b>: una pregunta con número; gana quien más se acerca.</li>
           <li><b>💣 Palabra bomba</b>: escribí una palabra que contenga la sílaba (TOM → TOMATE) antes de que explote; la mecha es secreta. Sin acentos y da igual mayúsculas. 2 vidas. Vale el diccionario español y los paraguayismos.</li>
-          <li><b>🐸 Carrera de sapos</b>: pista vertical de 3 carriles; el sapo salta solo y cada vez más rápido. Vos solo cambiás de carril con ← → (A / D) o los dos botones del celular. Si caés en un charco quedás afuera. Gana el primero que llega a la meta (fila 60); después, quien llegó más lejos.</li>
+          <li><b>🐸 Carrera de sapos</b>: pista vertical de 3 carriles; el sapo salta solo y cada vez más rápido. Vos solo cambiás de carril con ← → (A / D) o los dos botones del celular. Si caés en un charco quedás afuera. Gana el primero que llega a la meta; después, quien llegó más lejos.</li>
           <li><b>🤠 Duelo del Oeste</b>: esperá la campana y tocá a quién disparar; el más rápido dispara primero. Disparar antes traba el revólver.</li>
           <li><b>⚡ Esquivá el rayo</b>: elegí una casilla; en 3 segundos caen rayos en un tercio del tablero. El último en pie gana.</li>
           <li><b>⚽ Penales</b>: tres penales; un toque fija la fuerza (ni flojo ni por arriba) y otro la dirección. El arquero se tira a un lado.</li>
           <li><b>🎈 Ruleta rusa de globos</b>: un globo esconde la aguja; por turnos cada uno pincha uno. Quien la encuentra queda afuera, se inflan globos nuevos y siguen los demás hasta que queda uno.</li>
           <li><b>🎨 Adiviná el dibujo</b>: quien cayó dibuja; el primero que acierta gana y el dibujante también cobra.</li>
+          <li><b>🃏 Cartas contra el Paraguay</b> (3+ jugadores): el juez lee una frase con hueco; los demás la completan con una de sus 6 cartas (solo vos ves tu mano). El juez elige la más graciosa sin saber de quién es. 3 rondas, el juez rota.</li>
+          <li><b>🔍 La foto borrosa</b>: una imagen se destapa en 12 s. El primero que toca la respuesta correcta gana 3 puntos; si errás, quedás afuera de esa imagen. 3 imágenes.</li>
+          <li><b>🔗 Ordená la cadena</b>: cuatro cosas para ordenar con un criterio (ciudades de oeste a este, precios, fechas…). Tocalas en orden y confirmá. Un punto por cada posición correcta. 2 cadenas.</li>
+          <li><b>🔫 Ruleta de la muerte</b>: un revólver con una bala en seis recámaras pasa de mano en mano. Apretás (cada clic vacío sube la probabilidad), girás el tambor (vuelve a 1 en 6) o pasás (una sola vez). Quien recibe la bala queda afuera y se recarga. Último en pie gana.</li>
+          <li><b>🧨 Plantá la bomba</b> (3+ jugadores): quien cayó en la Arena es el saboteador y elige en secreto cuál de los 4 cables es la trampa; los demás cortan uno. Quien corta la trampa vuela. 3 rondas: el saboteador suma 1 por cada uno que vuela; cada desactivador suma 1 por ronda que sobrevive.</li>
         </ul>
       </div>
     ),
