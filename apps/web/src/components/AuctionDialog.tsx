@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { tile, type PropertyTile } from '@nandepoly/engine';
-import { useStore } from '../store';
+import { useOverlayBusy, useSettled, useStore } from '../store';
 import { money } from '../format';
 import Modal from './Modal';
 import { TileDetails } from './PropertyCard';
@@ -22,7 +22,8 @@ export default function AuctionDialog() {
     if (a) setAmount(Math.max(10, a.highestBid + 10));
   }, [a?.highestBid, a?.tileId]);
 
-  if (!a || state.turnPhase !== 'AUCTION') return <Modal open={false} />;
+  const busy = !useSettled(!useOverlayBusy());
+  if (!a || state.turnPhase !== 'AUCTION' || busy) return <Modal open={false} />;
   const t = tile(a.tileId) as PropertyTile;
   const meP = state.players.find(p => p.id === me);
   const inAuction = !!me && a.activeBidders.includes(me);

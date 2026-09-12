@@ -1,0 +1,903 @@
+<!doctype html><meta charset="utf-8"><style>
+* { box-sizing: border-box } body { margin:0; background:#14201a; font-family: Inter, system-ui, sans-serif; color:#1F2A37 }
+.scene { width: 1480px; padding: 26px 34px; display:flex; gap: 34px; align-items:flex-start; background: radial-gradient(circle at 50% 25%, #33513a, #111a14 72%) }
+.stage { perspective: 1700px; width: 660px; }
+.board { position:relative; width: 660px; height: 660px; display:grid; grid-template-columns: 1.6fr repeat(10,1fr) 1.6fr; grid-template-rows: 1.6fr repeat(10,1fr) 1.6fr; background:#31432f; border: 4px solid #2a3a28; border-radius: 10px; box-shadow: 0 34px 70px rgba(0,0,0,.65), inset 0 0 40px rgba(0,0,0,.35); transform-style: preserve-3d; }
+.tilt .board { transform: rotateX(40deg); transform-origin: 50% 62%; }
+.tile { position:relative; background: linear-gradient(160deg, #fbf6e8, #ece2ca); border: 1px solid #b9b39f; transform-style: preserve-3d; }
+.center { grid-row: 2/12; grid-column: 2/12; background: linear-gradient(160deg, #efe6cf, #e2d6b8); display:flex; flex-direction:column; align-items:center; justify-content:center; border: 1px solid #b9b39f; box-shadow: inset 0 0 50px rgba(120,100,60,.25); }
+.brand { font-size: 46px; font-weight: 900; letter-spacing: -1.5px; color:#D62828; text-shadow: 3px 3px 0 #1F4E9A, 0 6px 12px rgba(0,0,0,.25); }
+.dice { display:flex; gap: 13px; margin-top: 16px }
+.die { width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(150deg,#fff,#dfe3e8); display:grid; place-items:center; font-size: 37px; box-shadow: 0 5px 0 #9aa3ad, 0 9px 14px rgba(0,0,0,.35); }
+.die.nandu { background: linear-gradient(150deg,#ffb457,#d97706); color:#fff; font-size: 24px; font-weight: 900; box-shadow: 0 5px 0 #7a4a08, 0 9px 14px rgba(0,0,0,.35) }
+
+/* Franja de color: siempre del lado que mira al centro del tablero */
+.strip { position:absolute; box-shadow: inset 0 -2px 3px rgba(0,0,0,.28); }
+.bottom .strip { left:0; right:0; top:0; height: 20%; }
+.top .strip { left:0; right:0; bottom:0; height: 20%; box-shadow: inset 0 2px 3px rgba(0,0,0,.28) }
+.left .strip { top:0; bottom:0; right:0; width: 20%; box-shadow: inset 2px 0 3px rgba(0,0,0,.28) }
+.right .strip { top:0; bottom:0; left:0; width: 20%; box-shadow: inset -2px 0 3px rgba(0,0,0,.28) }
+
+/* Nombre: en el centro, con lugar reservado para la franja y para las fichas */
+.body { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-weight: 700; }
+.bottom .body { padding: 21% 1px 16% } .top .body { padding: 16% 1px 21% }
+.left .body { padding: 2px 21% 2px 4% } .right .body { padding: 2px 4% 2px 21% }
+.name { font-size: 6.6px; line-height: 1.14; letter-spacing: -.15px; word-break: keep-all; hyphens: none }
+.left .name, .right .name { font-size: 7.2px }
+.price { font-size: 6.4px; color:#6b6151; margin-top: 1.5px } .ico { font-size: 15px; line-height:1 }
+.corner .body { padding: 3px } .corner .ico { font-size: 24px } .corner .name { font-size: 8px; line-height: 1.18 }
+.owner { position:absolute; width: 9px; height: 9px; border-radius: 50%; right: 3px; bottom: 3px; box-shadow: 0 0 0 1.6px #fff, 0 1px 2px rgba(0,0,0,.5); }
+.top .owner { bottom:auto; top: 3px }
+
+/* Casas y hoteles: sobre la franja de color */
+.builds { position:absolute; display:flex; gap: .5px; justify-content:center; align-items:flex-end; transform: translateZ(8px); }
+.bottom .builds { left:1px; right:1px; top: 0; height: 21% } .top .builds { left:1px; right:1px; bottom: 0; height: 21% }
+.left .builds, .right .builds { flex-direction: column; top:2px; bottom:2px; width: 21%; justify-content:center; align-items:center }
+.left .builds { right: 0 } .right .builds { left: 0 }
+.house { width: 13px; height: 12px } .hotel { width: 27px; height: 17px }
+.left .house, .right .house { width: 12px; height: 11px } .left .hotel, .right .hotel { width: 21px; height: 13px }
+
+/* Fichas: en el borde de afuera, para no tapar el nombre */
+.toks { position:absolute; display:flex; align-items:flex-end; justify-content:center; gap: 0; transform: translateZ(22px); }
+.bottom .toks { left:0; right:0; bottom: 1px } .top .toks { left:0; right:0; top: 1px; align-items:flex-start }
+.left .toks { top:0; bottom:0; left:1px; flex-direction:column; justify-content:center; align-items:flex-start }
+.right .toks { top:0; bottom:0; right:1px; flex-direction:column; justify-content:center; align-items:flex-end }
+.tok { width: 26px; height: 32px; margin: 0 -5px }
+.left .tok, .right .tok { margin: -6px 0 }
+.tokSvg { width: 100%; height: 100%; overflow: visible }
+.tilt .toks { transform: translateZ(22px) rotateX(-40deg); transform-origin: 50% 100%; }
+.tilt .builds { transform: translateZ(5px) rotateX(-40deg); transform-origin: 50% 100%; }
+
+.caption { color:#fff; font-weight: 800; font-size: 19px; margin-bottom: 12px }
+.sub { color:#cde8d4; font-size: 13px; margin-top: 12px; max-width: 660px; line-height: 1.5 }
+.zoom { margin-top: 14px; display:flex; gap: 22px; align-items:flex-end; background: rgba(255,255,255,.07); border-radius: 12px; padding: 14px 18px }
+.zoom .house { width: 50px; height: 46px } .zoom .hotel { width: 92px; height: 58px } .zoom .tok { width: 68px; height: 84px; margin: 0 }
+.zoom span { color:#cde8d4; font-size: 11px; font-weight:700; display:block; text-align:center; margin-top: 6px }
+</style><div class="scene">
+<div><div class="caption">A · Piel 2D plana — casas, hoteles y fichas con relieve</div><div class="stage "><div class="board"><div class="tile bottom corner go" style="grid-row:12;grid-column:12"><div class="body"><div class="ico">🏁</div><div class="name">Salida</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:11"><div class="strip" style="background:linear-gradient(to bottom, #8B4513, #8B4513cc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Villa<br>Hayes</div><div class="price">60 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  community" style="grid-row:12;grid-column:10"><div class="body"><div class="ico">🤝</div><div class="name">Coope-<br>rativa</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:9"><div class="strip" style="background:linear-gradient(to bottom, #8B4513, #8B4513cc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Mariano<br>R. Alonso</div><div class="price">60 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  tax" style="grid-row:12;grid-column:8"><div class="body"><div class="ico">💸</div><div class="name">Impuesto<br>Renta<br>(SET)</div></div><div class="toks"></div></div><div class="tile bottom  transport" style="grid-row:12;grid-column:7"><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="ico">🚌</div><div class="name">Terminal de<br>Ómnibus</div></div><div class="toks"></div></div><div class="tile bottom  arena" style="grid-row:12;grid-column:6"><div class="body"><div class="ico">🏟️</div><div class="name">La Arena</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:5"><div class="strip" style="background:linear-gradient(to bottom, #6EC1E4, #6EC1E4cc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Caacupé</div><div class="price">100 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  chance" style="grid-row:12;grid-column:4"><div class="body"><div class="ico">❓</div><div class="name">Suerte</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:3"><div class="strip" style="background:linear-gradient(to bottom, #6EC1E4, #6EC1E4cc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Paraguarí</div><div class="price">100 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:2"><div class="strip" style="background:linear-gradient(to bottom, #6EC1E4, #6EC1E4cc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Villarrica</div><div class="price">120 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom corner jail" style="grid-row:12;grid-column:1"><div class="body"><div class="ico">🔒</div><div class="name">Tacumbú</div></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wjaguarete2E8B57" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fjaguarete2E8B57" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#1b5334"/>
+  <rect x="5" y="46" width="42" height="6" fill="#1b5334"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#2E8B57"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#2E8B57"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wjaguarete2E8B57)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#2E8B57" stroke="#1b5334" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fjaguarete2E8B57)" stroke="#1b5334" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><circle cx="16" cy="18" r="10" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.7"/><circle cx="8.5" cy="10.5" r="3.2" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.6"/><circle cx="23.5" cy="10.5" r="3.2" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.6"/><circle cx="12.4" cy="16.5" r="1.7" fill="#241a08"/><circle cx="19.6" cy="16.5" r="1.7" fill="#241a08"/><path d="M13.4 21.5q2.6 2.4 5.2 0" stroke="#241a08" stroke-width="1.6" fill="none" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile left  street" style="grid-row:11;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #E75480, #E75480cc)"></div><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="name">Coronel<br>Oviedo</div><div class="price">140 mil</div></div><div class="toks"></div></div><div class="tile left  utility" style="grid-row:10;grid-column:1"><div class="owner" style="background:#F7941D"></div><div class="body"><div class="ico">💡</div><div class="name">ANDE</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:9;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #E75480, #E75480cc)"></div><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="name">Concep-<br>ción</div><div class="price">140 mil</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:8;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #E75480, #E75480cc)"></div><div class="body"><div class="name">Pilar</div><div class="price">160 mil</div></div><div class="toks"></div></div><div class="tile left  transport" style="grid-row:7;grid-column:1"><div class="owner" style="background:#D62828"></div><div class="body"><div class="ico">🚌</div><div class="name">Aeropuerto<br>Pettirossi</div></div><div class="toks"></div></div><div class="tile left  casino" style="grid-row:6;grid-column:1"><div class="body"><div class="ico">🎰</div><div class="name">Casino</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:5;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #F7941D, #F7941Dcc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Luque</div><div class="price">180 mil</div></div><div class="builds"><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wmateD62828" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fmateD62828" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#8d1414"/>
+  <rect x="5" y="46" width="42" height="6" fill="#8d1414"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#D62828"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#D62828"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wmateD62828)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#D62828" stroke="#8d1414" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fmateD62828)" stroke="#8d1414" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><path d="M8 11h16l-1.7 13.5a4.5 4.5 0 0 1-4.5 4h-3.6a4.5 4.5 0 0 1-4.5-4z" fill="#7b4a22" stroke="#3b2110" stroke-width="1.6"/><ellipse cx="16" cy="11" rx="8" ry="3" fill="#8fbf4d" stroke="#3b2110" stroke-width="1.2"/><path d="M19 10L27 2" stroke="#9aa3ad" stroke-width="2.6" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile left  community" style="grid-row:4;grid-column:1"><div class="body"><div class="ico">🤝</div><div class="name">Coope-<br>rativa</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:3;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #F7941D, #F7941Dcc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">San<br>Lorenzo</div><div class="price">180 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:2;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #F7941D, #F7941Dcc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Fernando<br>de la Mora</div><div class="price">200 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile left corner parking" style="grid-row:1;grid-column:1"><div class="body"><div class="ico">🅿️</div><div class="name">Estacio-<br>namiento<br>Libre</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:2"><div class="strip" style="background:linear-gradient(to bottom, #D62828, #D62828cc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Encar-<br>nación</div><div class="price">220 mil</div></div><div class="toks"></div></div><div class="tile top  chance" style="grid-row:1;grid-column:3"><div class="body"><div class="ico">❓</div><div class="name">Suerte</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:4"><div class="strip" style="background:linear-gradient(to bottom, #D62828, #D62828cc)"></div><div class="body"><div class="name">Pedro<br>Juan<br>Caballero</div><div class="price">220 mil</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:5"><div class="strip" style="background:linear-gradient(to bottom, #D62828, #D62828cc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Ciudad<br>del Este</div><div class="price">240 mil</div></div><div class="toks"></div></div><div class="tile top  transport" style="grid-row:1;grid-column:6"><div class="body"><div class="ico">🚌</div><div class="name">Puerto de<br>Asunción</div></div><div class="toks"></div></div><div class="tile top  arena" style="grid-row:1;grid-column:7"><div class="body"><div class="ico">🏟️</div><div class="name">La Arena</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:8"><div class="strip" style="background:linear-gradient(to bottom, #F4D03F, #F4D03Fcc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Av. Mcal.<br>López</div><div class="price">260 mil</div></div><div class="builds"><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:9"><div class="strip" style="background:linear-gradient(to bottom, #F4D03F, #F4D03Fcc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Av. España</div><div class="price">260 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wchipa1F4E9A" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fchipa1F4E9A" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#12305e"/>
+  <rect x="5" y="46" width="42" height="6" fill="#12305e"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#1F4E9A"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#1F4E9A"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wchipa1F4E9A)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#1F4E9A" stroke="#12305e" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fchipa1F4E9A)" stroke="#12305e" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><circle cx="16" cy="17" r="10.5" fill="#e0a54a" stroke="#7a4d12" stroke-width="1.8"/><circle cx="16" cy="17" r="3.6" fill="#f6ead0" stroke="#7a4d12" stroke-width="1.3"/><circle cx="11" cy="12.5" r="1.1" fill="#7a4d12"/><circle cx="21.5" cy="13" r="1.1" fill="#7a4d12"/><circle cx="21" cy="22" r="1.1" fill="#7a4d12"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile top  utility" style="grid-row:1;grid-column:10"><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="ico">💡</div><div class="name">ESSAP</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:11"><div class="strip" style="background:linear-gradient(to bottom, #F4D03F, #F4D03Fcc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Av. Avia-<br>dores del<br>Chaco</div><div class="price">280 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile top corner gotojail" style="grid-row:1;grid-column:12"><div class="body"><div class="ico">🚔</div><div class="name">Vaya a<br>Tacumbú</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:2;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #2E8B57, #2E8B57cc)"></div><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="name">Villa<br>Morra</div><div class="price">300 mil</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:3;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #2E8B57, #2E8B57cc)"></div><div class="body"><div class="name">Las<br>Carmelitas</div><div class="price">300 mil</div></div><div class="toks"></div></div><div class="tile right  community" style="grid-row:4;grid-column:12"><div class="body"><div class="ico">🤝</div><div class="name">Coope-<br>rativa</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:5;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #2E8B57, #2E8B57cc)"></div><div class="body"><div class="name">Mburu-<br>cuyá</div><div class="price">320 mil</div></div><div class="toks"></div></div><div class="tile right  transport" style="grid-row:6;grid-column:12"><div class="body"><div class="ico">🚌</div><div class="name">Puente de<br>la Amistad</div></div><div class="toks"></div></div><div class="tile right  casino" style="grid-row:7;grid-column:12"><div class="body"><div class="ico">🎰</div><div class="name">Casino</div></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wcarretaF7941D" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fcarretaF7941D" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#a35c07"/>
+  <rect x="5" y="46" width="42" height="6" fill="#a35c07"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#F7941D"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#F7941D"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wcarretaF7941D)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#F7941D" stroke="#a35c07" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fcarretaF7941D)" stroke="#a35c07" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><rect x="5" y="10" width="19" height="8.5" rx="1.6" fill="#a0522d" stroke="#4a2410" stroke-width="1.6"/><circle cx="10" cy="23" r="4.4" fill="#deb887" stroke="#4a2410" stroke-width="1.6"/><circle cx="21" cy="23" r="4.4" fill="#deb887" stroke="#4a2410" stroke-width="1.6"/><path d="M24 13.5h5.5" stroke="#4a2410" stroke-width="1.8" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile right  chance" style="grid-row:8;grid-column:12"><div class="body"><div class="ico">❓</div><div class="name">Suerte</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:9;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #1F4E9A, #1F4E9Acc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Costanera<br>de Asunción</div><div class="price">350 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile right  tax" style="grid-row:10;grid-column:12"><div class="body"><div class="ico">💸</div><div class="name">Impuesto<br>al lujo</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:11;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #1F4E9A, #1F4E9Acc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Palacio<br>de López</div><div class="price">400 mil</div></div><div class="builds"><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg></div><div class="toks"></div></div><div class="center"><div class="brand">Ñandepoly</div><div class="dice"><div class="die">⚄</div><div class="die">⚂</div><div class="die nandu">🎪</div></div></div></div></div>
+<div class="zoom">
+  <div><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><span>casa</span></div>
+  <div><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg><span>hotel</span></div>
+  <div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wmateD62828" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fmateD62828" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#8d1414"/>
+  <rect x="5" y="46" width="42" height="6" fill="#8d1414"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#D62828"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#D62828"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wmateD62828)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#D62828" stroke="#8d1414" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fmateD62828)" stroke="#8d1414" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><path d="M8 11h16l-1.7 13.5a4.5 4.5 0 0 1-4.5 4h-3.6a4.5 4.5 0 0 1-4.5-4z" fill="#7b4a22" stroke="#3b2110" stroke-width="1.6"/><ellipse cx="16" cy="11" rx="8" ry="3" fill="#8fbf4d" stroke="#3b2110" stroke-width="1.2"/><path d="M19 10L27 2" stroke="#9aa3ad" stroke-width="2.6" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg><span>ficha</span></div>
+  <div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wjaguarete2E8B57" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fjaguarete2E8B57" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#1b5334"/>
+  <rect x="5" y="46" width="42" height="6" fill="#1b5334"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#2E8B57"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#2E8B57"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wjaguarete2E8B57)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#2E8B57" stroke="#1b5334" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fjaguarete2E8B57)" stroke="#1b5334" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><circle cx="16" cy="18" r="10" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.7"/><circle cx="8.5" cy="10.5" r="3.2" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.6"/><circle cx="23.5" cy="10.5" r="3.2" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.6"/><circle cx="12.4" cy="16.5" r="1.7" fill="#241a08"/><circle cx="19.6" cy="16.5" r="1.7" fill="#241a08"/><path d="M13.4 21.5q2.6 2.4 5.2 0" stroke="#241a08" stroke-width="1.6" fill="none" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg><span>ficha</span></div>
+</div>
+<div class="sub">Techo con luz y sombra, paredes con degradé y sombra proyectada sobre la casilla. Las fichas son piezas con pared lateral, cara grabada y brillo: se ven paradas sobre el tablero, no dibujadas encima. Los nombres largos van en dos renglones y ninguno queda cortado.</div></div>
+<div><div class="caption">B · Vista de mesa — el mismo tablero inclinado</div><div class="stage tilt"><div class="board"><div class="tile bottom corner go" style="grid-row:12;grid-column:12"><div class="body"><div class="ico">🏁</div><div class="name">Salida</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:11"><div class="strip" style="background:linear-gradient(to bottom, #8B4513, #8B4513cc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Villa<br>Hayes</div><div class="price">60 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  community" style="grid-row:12;grid-column:10"><div class="body"><div class="ico">🤝</div><div class="name">Coope-<br>rativa</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:9"><div class="strip" style="background:linear-gradient(to bottom, #8B4513, #8B4513cc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Mariano<br>R. Alonso</div><div class="price">60 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  tax" style="grid-row:12;grid-column:8"><div class="body"><div class="ico">💸</div><div class="name">Impuesto<br>Renta<br>(SET)</div></div><div class="toks"></div></div><div class="tile bottom  transport" style="grid-row:12;grid-column:7"><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="ico">🚌</div><div class="name">Terminal de<br>Ómnibus</div></div><div class="toks"></div></div><div class="tile bottom  arena" style="grid-row:12;grid-column:6"><div class="body"><div class="ico">🏟️</div><div class="name">La Arena</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:5"><div class="strip" style="background:linear-gradient(to bottom, #6EC1E4, #6EC1E4cc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Caacupé</div><div class="price">100 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  chance" style="grid-row:12;grid-column:4"><div class="body"><div class="ico">❓</div><div class="name">Suerte</div></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:3"><div class="strip" style="background:linear-gradient(to bottom, #6EC1E4, #6EC1E4cc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Paraguarí</div><div class="price">100 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom  street" style="grid-row:12;grid-column:2"><div class="strip" style="background:linear-gradient(to bottom, #6EC1E4, #6EC1E4cc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Villarrica</div><div class="price">120 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile bottom corner jail" style="grid-row:12;grid-column:1"><div class="body"><div class="ico">🔒</div><div class="name">Tacumbú</div></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wjaguarete2E8B57" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fjaguarete2E8B57" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#1b5334"/>
+  <rect x="5" y="46" width="42" height="6" fill="#1b5334"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#2E8B57"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#2E8B57"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wjaguarete2E8B57)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#2E8B57" stroke="#1b5334" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fjaguarete2E8B57)" stroke="#1b5334" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><circle cx="16" cy="18" r="10" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.7"/><circle cx="8.5" cy="10.5" r="3.2" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.6"/><circle cx="23.5" cy="10.5" r="3.2" fill="#e8b13c" stroke="#5a3a0a" stroke-width="1.6"/><circle cx="12.4" cy="16.5" r="1.7" fill="#241a08"/><circle cx="19.6" cy="16.5" r="1.7" fill="#241a08"/><path d="M13.4 21.5q2.6 2.4 5.2 0" stroke="#241a08" stroke-width="1.6" fill="none" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile left  street" style="grid-row:11;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #E75480, #E75480cc)"></div><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="name">Coronel<br>Oviedo</div><div class="price">140 mil</div></div><div class="toks"></div></div><div class="tile left  utility" style="grid-row:10;grid-column:1"><div class="owner" style="background:#F7941D"></div><div class="body"><div class="ico">💡</div><div class="name">ANDE</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:9;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #E75480, #E75480cc)"></div><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="name">Concep-<br>ción</div><div class="price">140 mil</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:8;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #E75480, #E75480cc)"></div><div class="body"><div class="name">Pilar</div><div class="price">160 mil</div></div><div class="toks"></div></div><div class="tile left  transport" style="grid-row:7;grid-column:1"><div class="owner" style="background:#D62828"></div><div class="body"><div class="ico">🚌</div><div class="name">Aeropuerto<br>Pettirossi</div></div><div class="toks"></div></div><div class="tile left  casino" style="grid-row:6;grid-column:1"><div class="body"><div class="ico">🎰</div><div class="name">Casino</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:5;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #F7941D, #F7941Dcc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Luque</div><div class="price">180 mil</div></div><div class="builds"><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wmateD62828" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fmateD62828" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#8d1414"/>
+  <rect x="5" y="46" width="42" height="6" fill="#8d1414"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#D62828"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#D62828"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wmateD62828)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#D62828" stroke="#8d1414" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fmateD62828)" stroke="#8d1414" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><path d="M8 11h16l-1.7 13.5a4.5 4.5 0 0 1-4.5 4h-3.6a4.5 4.5 0 0 1-4.5-4z" fill="#7b4a22" stroke="#3b2110" stroke-width="1.6"/><ellipse cx="16" cy="11" rx="8" ry="3" fill="#8fbf4d" stroke="#3b2110" stroke-width="1.2"/><path d="M19 10L27 2" stroke="#9aa3ad" stroke-width="2.6" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile left  community" style="grid-row:4;grid-column:1"><div class="body"><div class="ico">🤝</div><div class="name">Coope-<br>rativa</div></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:3;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #F7941D, #F7941Dcc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">San<br>Lorenzo</div><div class="price">180 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile left  street" style="grid-row:2;grid-column:1"><div class="strip" style="background:linear-gradient(to bottom, #F7941D, #F7941Dcc)"></div><div class="owner" style="background:#D62828"></div><div class="body"><div class="name">Fernando<br>de la Mora</div><div class="price">200 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile left corner parking" style="grid-row:1;grid-column:1"><div class="body"><div class="ico">🅿️</div><div class="name">Estacio-<br>namiento<br>Libre</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:2"><div class="strip" style="background:linear-gradient(to bottom, #D62828, #D62828cc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Encar-<br>nación</div><div class="price">220 mil</div></div><div class="toks"></div></div><div class="tile top  chance" style="grid-row:1;grid-column:3"><div class="body"><div class="ico">❓</div><div class="name">Suerte</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:4"><div class="strip" style="background:linear-gradient(to bottom, #D62828, #D62828cc)"></div><div class="body"><div class="name">Pedro<br>Juan<br>Caballero</div><div class="price">220 mil</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:5"><div class="strip" style="background:linear-gradient(to bottom, #D62828, #D62828cc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Ciudad<br>del Este</div><div class="price">240 mil</div></div><div class="toks"></div></div><div class="tile top  transport" style="grid-row:1;grid-column:6"><div class="body"><div class="ico">🚌</div><div class="name">Puerto de<br>Asunción</div></div><div class="toks"></div></div><div class="tile top  arena" style="grid-row:1;grid-column:7"><div class="body"><div class="ico">🏟️</div><div class="name">La Arena</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:8"><div class="strip" style="background:linear-gradient(to bottom, #F4D03F, #F4D03Fcc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Av. Mcal.<br>López</div><div class="price">260 mil</div></div><div class="builds"><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:9"><div class="strip" style="background:linear-gradient(to bottom, #F4D03F, #F4D03Fcc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Av. España</div><div class="price">260 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wchipa1F4E9A" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fchipa1F4E9A" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#12305e"/>
+  <rect x="5" y="46" width="42" height="6" fill="#12305e"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#1F4E9A"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#1F4E9A"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wchipa1F4E9A)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#1F4E9A" stroke="#12305e" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fchipa1F4E9A)" stroke="#12305e" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><circle cx="16" cy="17" r="10.5" fill="#e0a54a" stroke="#7a4d12" stroke-width="1.8"/><circle cx="16" cy="17" r="3.6" fill="#f6ead0" stroke="#7a4d12" stroke-width="1.3"/><circle cx="11" cy="12.5" r="1.1" fill="#7a4d12"/><circle cx="21.5" cy="13" r="1.1" fill="#7a4d12"/><circle cx="21" cy="22" r="1.1" fill="#7a4d12"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile top  utility" style="grid-row:1;grid-column:10"><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="ico">💡</div><div class="name">ESSAP</div></div><div class="toks"></div></div><div class="tile top  street" style="grid-row:1;grid-column:11"><div class="strip" style="background:linear-gradient(to bottom, #F4D03F, #F4D03Fcc)"></div><div class="owner" style="background:#1F4E9A"></div><div class="body"><div class="name">Av. Avia-<br>dores del<br>Chaco</div><div class="price">280 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile top corner gotojail" style="grid-row:1;grid-column:12"><div class="body"><div class="ico">🚔</div><div class="name">Vaya a<br>Tacumbú</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:2;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #2E8B57, #2E8B57cc)"></div><div class="owner" style="background:#2E8B57"></div><div class="body"><div class="name">Villa<br>Morra</div><div class="price">300 mil</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:3;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #2E8B57, #2E8B57cc)"></div><div class="body"><div class="name">Las<br>Carmelitas</div><div class="price">300 mil</div></div><div class="toks"></div></div><div class="tile right  community" style="grid-row:4;grid-column:12"><div class="body"><div class="ico">🤝</div><div class="name">Coope-<br>rativa</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:5;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #2E8B57, #2E8B57cc)"></div><div class="body"><div class="name">Mburu-<br>cuyá</div><div class="price">320 mil</div></div><div class="toks"></div></div><div class="tile right  transport" style="grid-row:6;grid-column:12"><div class="body"><div class="ico">🚌</div><div class="name">Puente de<br>la Amistad</div></div><div class="toks"></div></div><div class="tile right  casino" style="grid-row:7;grid-column:12"><div class="body"><div class="ico">🎰</div><div class="name">Casino</div></div><div class="toks"><div class="tok"><svg viewBox="0 0 52 64" class="tokSvg">
+  <defs>
+    <linearGradient id="wcarretaF7941D" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".28" stop-color="#fff" stop-opacity=".10"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="fcarretaF7941D" cx=".36" cy=".28" r=".85">
+      <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f6f1e4"/><stop offset="1" stop-color="#cfc4a9"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="26" cy="57" rx="21" ry="5.5" fill="#000" opacity=".45"/>
+  <!-- base ensanchada -->
+  <ellipse cx="26" cy="52" rx="21" ry="8" fill="#a35c07"/>
+  <rect x="5" y="46" width="42" height="6" fill="#a35c07"/>
+  <ellipse cx="26" cy="46" rx="21" ry="8" fill="#F7941D"/>
+  <!-- cuerpo -->
+  <rect x="8" y="22" width="36" height="24" fill="#F7941D"/>
+  <rect x="8" y="22" width="36" height="24" fill="url(#wcarretaF7941D)"/>
+  <path d="M8 46 a18 7.5 0 0 0 36 0" fill="none" stroke="#00000055" stroke-width="1.5"/>
+  <!-- cara de arriba -->
+  <ellipse cx="26" cy="22" rx="18" ry="7.5" fill="#F7941D" stroke="#a35c07" stroke-width="1.4"/>
+  <ellipse cx="26" cy="21" rx="14.5" ry="6" fill="url(#fcarretaF7941D)" stroke="#a35c07" stroke-width="1"/>
+  <g transform="translate(26 21) scale(0.36) translate(-16 -17)"><rect x="5" y="10" width="19" height="8.5" rx="1.6" fill="#a0522d" stroke="#4a2410" stroke-width="1.6"/><circle cx="10" cy="23" r="4.4" fill="#deb887" stroke="#4a2410" stroke-width="1.6"/><circle cx="21" cy="23" r="4.4" fill="#deb887" stroke="#4a2410" stroke-width="1.6"/><path d="M24 13.5h5.5" stroke="#4a2410" stroke-width="1.8" stroke-linecap="round"/></g>
+  <!-- brillo -->
+  <path d="M11 24 q3 -7 14 -8" stroke="#fff" stroke-width="2.4" opacity=".5" fill="none" stroke-linecap="round"/>
+  <path d="M11 30 v13" stroke="#fff" stroke-width="2.2" opacity=".22" stroke-linecap="round"/>
+</svg></div></div></div><div class="tile right  chance" style="grid-row:8;grid-column:12"><div class="body"><div class="ico">❓</div><div class="name">Suerte</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:9;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #1F4E9A, #1F4E9Acc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Costanera<br>de Asunción</div><div class="price">350 mil</div></div><div class="builds"><svg viewBox="0 0 24 22" class="house">
+  <defs>
+    <linearGradient id="hr" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#ff7a6b"/><stop offset=".45" stop-color="#d93025"/><stop offset="1" stop-color="#7d1010"/></linearGradient>
+    <linearGradient id="hw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset=".55" stop-color="#efe4cd"/><stop offset="1" stop-color="#bda98a"/></linearGradient>
+  </defs>
+  <ellipse cx="12" cy="20.4" rx="9.2" ry="1.7" fill="#000" opacity=".34"/>
+  <path d="M3.2 10.4 L12 3.4 L20.8 10.4 V19.4 H3.2 Z" fill="url(#hw)" stroke="#6b4f2a" stroke-width=".8"/>
+  <path d="M0.8 10.6 L12 1.2 L23.2 10.6 L20.6 12.3 L12 5 L3.4 12.3 Z" fill="url(#hr)" stroke="#5e0c0c" stroke-width=".7" stroke-linejoin="round"/>
+  <path d="M12 1.2 L12 5" stroke="#ffb4a8" stroke-width=".8" opacity=".8"/>
+  <rect x="9.6" y="13.4" width="4.8" height="6" rx=".5" fill="#6b4f2a"/>
+  <rect x="4.9" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+  <rect x="15.7" y="12.6" width="3.4" height="3.4" rx=".4" fill="#8fd3ef" stroke="#6b4f2a" stroke-width=".6"/>
+</svg></div><div class="toks"></div></div><div class="tile right  tax" style="grid-row:10;grid-column:12"><div class="body"><div class="ico">💸</div><div class="name">Impuesto<br>al lujo</div></div><div class="toks"></div></div><div class="tile right  street" style="grid-row:11;grid-column:12"><div class="strip" style="background:linear-gradient(to bottom, #1F4E9A, #1F4E9Acc)"></div><div class="owner" style="background:#F7941D"></div><div class="body"><div class="name">Palacio<br>de López</div><div class="price">400 mil</div></div><div class="builds"><svg viewBox="0 0 44 28" class="hotel">
+  <defs>
+    <linearGradient id="tw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c0392b"/><stop offset=".5" stop-color="#9b1c1c"/><stop offset="1" stop-color="#5d0b0b"/></linearGradient>
+    <linearGradient id="tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d1717"/><stop offset="1" stop-color="#480707"/></linearGradient>
+  </defs>
+  <ellipse cx="22" cy="26.2" rx="18" ry="2" fill="#000" opacity=".38"/>
+  <path d="M2 9.5 L22 2 L42 9.5 L39 11.4 L22 5 L5 11.4 Z" fill="url(#tr)"/>
+  <rect x="5" y="10.8" width="34" height="14.6" rx="1" fill="url(#tw)" stroke="#3a0606" stroke-width=".9"/>
+  <rect x="5" y="10.8" width="10" height="14.6" fill="#fff" opacity=".13"/>
+  <rect x="8" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="15.6" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="23.2" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/><rect x="30.799999999999997" y="13.4" width="4.6" height="4.2" rx=".4" fill="#ffe08a" stroke="#3a0606" stroke-width=".5"/>
+  <rect x="18.6" y="19.6" width="6.8" height="5.8" rx=".5" fill="#2c0404"/>
+  <rect x="5" y="10.2" width="34" height="1.4" fill="#e8b4b4" opacity=".7"/>
+</svg></div><div class="toks"></div></div><div class="center"><div class="brand">Ñandepoly</div><div class="dice"><div class="die">⚄</div><div class="die">⚂</div><div class="die nandu">🎪</div></div></div></div></div>
+<div class="sub">El tablero se inclina como una mesa de verdad; casas, hoteles y fichas quedan parados y mirando al jugador, con su sombra sobre la casilla. Se alterna plano ↔ mesa con un botón; en el celular queda plano.</div></div>
+</div>

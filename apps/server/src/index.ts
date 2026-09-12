@@ -7,12 +7,13 @@ import fastifyCors from '@fastify/cors';
 import { Server as IOServer, type Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import {
-  MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, toClientState,
-  updateSettings, type Action, type GameEvent, type GameState, type TokenId,
+  MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, rollDice, toClientState,
+  updateSettings, type Action, type GameEvent, type GameState, type TokenId, type TurnPhase,
 } from '@nandepoly/engine';
-import { ActionSchema, ChatSchema, CreateRoomSchema, JoinRoomSchema, RejoinSchema, SettingsSchema } from './protocol';
+import { ActionSchema, ChatSchema, CreateRoomSchema, DraftingSchema, JoinRoomSchema, ReactSchema, RejoinSchema, SettingsSchema, StrokeSchema } from './protocol';
 import { RoomManager, type Room } from './rooms';
 import { botAction } from './bots';
+import { DICT_SIZE, isValidWord } from './dictionary';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -64,22 +65,55 @@ const io = new IOServer(app.server, { cors: { origin: true }, pingInterval: 1000
 
 interface Session { roomCode: string; playerId: string | null; playerToken: string; name: string }
 const sessions = new Map<string, Session>(); // socket.id → sesión
-const timers = new Map<string, { turn?: NodeJS.Timeout; auction?: NodeJS.Timeout; bot?: NodeJS.Timeout; limit?: NodeJS.Timeout }>();
+const reactAt = new Map<string, number>();      // playerId → última reacción (para no inundar)
+const timers = new Map<string, { turn?: NodeJS.Timeout; auction?: NodeJS.Timeout; bot?: NodeJS.Timeout; limit?: NodeJS.Timeout; phase?: NodeJS.Timeout; go?: NodeJS.Timeout; tick?: NodeJS.Timeout }>();
+const ARENA_VOTE_SECONDS = Number(process.env.ARENA_VOTE_SECONDS ?? 8);
+const ARENA_RESULT_SECONDS = Number(process.env.ARENA_RESULT_SECONDS ?? 7);
+const ARENA_TICK_MS = Number(process.env.ARENA_TICK_MS ?? 400);
+const DUEL_ACCEPT_SECONDS = Number(process.env.DUEL_ACCEPT_SECONDS ?? 20);
+const DUEL_IDLE_SECONDS = Number(process.env.DUEL_IDLE_SECONDS ?? 90);
+const CHALLENGE_ACCEPT_SECONDS = Number(process.env.CHALLENGE_ACCEPT_SECONDS ?? 15);
+const RENT_OFFER_SECONDS = Number(process.env.RENT_OFFER_SECONDS ?? 20);
+const CASINO_IDLE_SECONDS = Number(process.env.CASINO_IDLE_SECONDS ?? 75);
+const BLACKJACK_DECIDE_SECONDS = 25;
+const CHALLENGE_PLAY_SECONDS = Number(process.env.CHALLENGE_PLAY_SECONDS ?? 45);
 
 function ok<T>(data: T) { return { ok: true as const, ...data }; }
 function fail(message: string) { return { ok: false as const, error: message }; }
 
-function roomView(room: Room) {
+function roomView(room: Room, viewerId?: string | null) {
   return {
-    state: toClientState(room.state),
+    state: toClientState(room.state, viewerId ?? undefined),
+    serverTime: Date.now(),
     chat: room.chat.slice(-100),
     auctionDeadline: room.auctionDeadline,
     turnDeadline: room.turnDeadline,
+    phaseDeadline: room.phaseDeadline,
   };
 }
 
+/** Aplica una acción generada por el servidor (temporizadores) sin romper si el estado cambió. */
+function serverAction(room: Room, action: Action, note?: string) {
+  try {
+    const prev = room.state;
+    room.state = applyAction(room.state, action).state;
+    rooms.touch(room);
+    afterStateChange(room, prev);
+    broadcast(room, note ? [{ type: 'info', text: note }] : []);
+  } catch (e) { app.log.warn(e); }
+}
+// Nota: serverAction con note '' no agrega texto al registro.
+
+/** Cada jugador recibe su propia vista (misiones propias, mano de truco, lupa). Espectadores: vista neutra. */
 function broadcast(room: Room, events: GameEvent[] = []) {
-  io.to(room.code).emit('state:update', { ...roomView(room), events });
+  const base = { chat: room.chat.slice(-100), auctionDeadline: room.auctionDeadline, turnDeadline: room.turnDeadline, phaseDeadline: room.phaseDeadline, serverTime: Date.now(), events };
+  const perViewer = new Map<string | null, ReturnType<typeof toClientState>>();
+  for (const [socketId, sess] of sessions) {
+    if (sess.roomCode !== room.code) continue;
+    let state = perViewer.get(sess.playerId);
+    if (!state) { state = toClientState(room.state, sess.playerId ?? undefined); perViewer.set(sess.playerId, state); }
+    io.to(socketId).emit('state:update', { ...base, state });
+  }
 }
 
 function setConnected(room: Room, playerId: string, connected: boolean) {
@@ -131,9 +165,13 @@ function afterStateChange(room: Room, before: GameState) {
     }, AUCTION_SECONDS * 1000);
   }
 
-  // Temporizador de turno (regla casera)
-  const turnChanged = before.turnNumber !== s.turnNumber || before.phase !== s.phase;
-  if (s.phase === 'PLAYING' && s.settings.turnTimerSeconds > 0) {
+  // Temporizador de turno (regla casera). Solo corre mientras el jugador tiene que decidir algo
+  // de su turno (tirar, comprar, impuesto, deuda, terminar). En mini-juegos, casino, subastas,
+  // desafíos y duelos se pausa: esos tienen sus propios tiempos y no deben cortar la partida.
+  const TURN_TIMER_PHASES: TurnPhase[] = ['AWAITING_ROLL', 'AWAITING_BUY', 'TAX_CHOICE', 'DEBT', 'END_TURN'];
+  const timedPhase = TURN_TIMER_PHASES.includes(s.turnPhase);
+  const turnChanged = before.turnNumber !== s.turnNumber || before.phase !== s.phase || timedPhase !== TURN_TIMER_PHASES.includes(before.turnPhase);
+  if (s.phase === 'PLAYING' && s.settings.turnTimerSeconds > 0 && timedPhase) {
     if (turnChanged || !t.turn) {
       if (t.turn) clearTimeout(t.turn);
       room.turnDeadline = Date.now() + s.settings.turnTimerSeconds * 1000;
@@ -166,6 +204,71 @@ function afterStateChange(room: Room, before: GameState) {
   }
   if (s.phase !== 'PLAYING' && t.limit) { clearTimeout(t.limit); t.limit = undefined; }
 
+  // Temporizadores de fase: desafío pendiente / en juego, oferta de alquiler, casino, señal del tereré
+  if (t.phase) { clearTimeout(t.phase); t.phase = undefined; }
+  if (t.go) { clearTimeout(t.go); t.go = undefined; }
+  room.phaseDeadline = null;
+  if (s.phase === 'PLAYING') {
+    const arm = (secs: number, action: Action, note: string) => {
+      room.phaseDeadline = Date.now() + secs * 1000;
+      t.phase = setTimeout(() => { t.phase = undefined; serverAction(room, action, note); }, secs * 1000);
+    };
+    if (s.turnPhase === 'CHALLENGE' && s.challenge) {
+      const c = s.challenge;
+      if (c.status === 'pending') arm(CHALLENGE_ACCEPT_SECONDS, { type: 'CHALLENGE_REJECT', playerId: c.toId! }, 'El desafío venció sin respuesta.');
+      else if (c.status === 'pick') arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
+      else if (c.status === 'playing') {
+        // Blackjack: si el apostador no decide, se planta (no se anula la mano)
+        if (c.kind === 'blackjack' && c.data.bj?.stage === 'bettor') arm(BLACKJACK_DECIDE_SECONDS, { type: 'CHALLENGE_MOVE', playerId: c.data.bj.bettor, bj: 'stand' }, 'Se plantó por tiempo.');
+        else arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
+        if (c.kind === 'terere' && !c.data.go) {
+          const wait = 1500 + Math.floor(Math.random() * 3000);
+          t.go = setTimeout(() => { t.go = undefined; serverAction(room, { type: 'CHALLENGE_GO', playerId: s.hostId }); }, wait);
+        }
+      }
+    } else if (s.turnPhase === 'RENT_OFFER' && s.rentOffer) {
+      const o = s.rentOffer;
+      if (!o.proposed) arm(RENT_OFFER_SECONDS, { type: 'RENT_PAY', playerId: o.payerId }, 'Se pagó el alquiler por tiempo.');
+      else arm(RENT_OFFER_SECONDS, { type: 'RENT_DON_REJECT', playerId: o.ownerId }, 'El dueño no respondió: se cobra el alquiler normal.');
+    } else if (s.turnPhase === 'CASINO' && s.casino) {
+      arm(CASINO_IDLE_SECONDS, { type: 'FORCE_END_TURN', playerId: 'server' }, 'El Casino cerró: se acabó el tiempo de la mesa.');
+    } else if (s.turnPhase === 'ARENA' && s.arena) {
+      const a = s.arena;
+      if (a.stage === 'vote') {
+        // la votación cierra a los N segundos o cuando votaron todos (ver dispatch)
+        const allVoted = a.players.every(id => a.votes[id] !== undefined);
+        if (allVoted) { room.phaseDeadline = Date.now() + 1200; t.phase = setTimeout(() => { t.phase = undefined; serverAction(room, { type: 'ARENA_START', playerId: s.hostId, now: Date.now() }); }, 1200); }
+        else arm(ARENA_VOTE_SECONDS, { type: 'ARENA_START', playerId: s.hostId, now: Date.now() + ARENA_VOTE_SECONDS * 1000 }, '');
+      } else if (a.stage === 'done') {
+        arm(ARENA_RESULT_SECONDS, { type: 'ARENA_END', playerId: s.hostId }, '');
+      } else {
+        // en juego: ticks periódicos con el reloj del servidor
+        room.phaseDeadline = null;
+      }
+    } else if (s.turnPhase === 'DUEL' && s.duel) {
+      const d = s.duel;
+      if (d.status === 'pending') arm(DUEL_ACCEPT_SECONDS, { type: 'DUEL_REJECT', playerId: d.toId }, 'El duelo venció sin respuesta.');
+      else if (d.status === 'playing') arm(DUEL_IDLE_SECONDS, { type: 'DUEL_CANCEL', playerId: s.hostId }, 'El duelo se anuló por inactividad.');
+    }
+  }
+
+  // Tick de la Arena (solo mientras se juega)
+  const arenaPlaying = s.phase === 'PLAYING' && s.turnPhase === 'ARENA' && s.arena?.stage === 'play';
+  if (arenaPlaying && !t.tick) {
+    t.tick = setInterval(() => {
+      try {
+        const st = room.state;
+        if (st.phase !== 'PLAYING' || st.turnPhase !== 'ARENA' || st.arena?.stage !== 'play') { clearInterval(t.tick); t.tick = undefined; return; }
+        const before = room.state;
+        const { state, events } = applyAction(before, { type: 'ARENA_TICK', playerId: st.hostId, now: Date.now() });
+        const changed = state !== before && (events.length > 0 || JSON.stringify(state.arena) !== JSON.stringify(before.arena));
+        room.state = state;
+        if (changed) { rooms.touch(room); afterStateChange(room, before); broadcast(room, events); }
+      } catch (e) { app.log.warn(e); }
+    }, ARENA_TICK_MS);
+  }
+  if (!arenaPlaying && t.tick) { clearInterval(t.tick); t.tick = undefined; }
+
   // Bots
   if (t.bot) { clearTimeout(t.bot); t.bot = undefined; }
   if (s.phase === 'PLAYING') {
@@ -181,7 +284,7 @@ function afterStateChange(room: Room, before: GameState) {
           // Si el bot se traba, forzamos el turno para no bloquear la partida
           try { dispatch(room, { type: 'FORCE_END_TURN', playerId: room.state.hostId }); } catch { /* ignore */ }
         }
-      }, BOT_DELAY_MS);
+      }, s.turnPhase === 'ARENA' ? Math.min(BOT_DELAY_MS, 250) : BOT_DELAY_MS);
     }
   }
 }
@@ -328,9 +431,63 @@ io.on('connection', (socket: Socket) => {
       const parsed = ActionSchema.parse(raw);
       const action = { ...parsed, playerId: sess.playerId } as Action;
       if (action.type === 'LEAVE_GAME' && !action.targetId) action.targetId = sess.playerId;
+      if (action.type === 'ARENA_MOVE') {
+        action.now = Date.now();
+        const payload = { ...action.payload } as Record<string, unknown>;
+        if (room.state.arena?.game === 'bomba') payload.valid = isValidWord(String(payload.word ?? ''));
+        else delete payload.valid;
+        action.payload = payload;
+      }
       dispatch(room, action);
       cb?.(ok({}));
     } catch (e) { handleError(e, cb); }
+  });
+
+  // Trazos del "Adiviná el dibujo": solo el dibujante, se reenvían a los demás sin tocar el estado
+  socket.on('arena:stroke', (raw) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return;
+      const a = room.state.arena;
+      if (!a || a.game !== 'dibujo' || a.data.drawer !== sess.playerId) return;
+      const stroke = StrokeSchema.parse(raw);
+      socket.to(room.code).emit('arena:stroke', stroke);
+    } catch { /* ignorar trazos inválidos */ }
+  });
+
+  // "Abrir caja": el dueño de la caja sorpresa avisa que la abre y todos ven girar el carrete a la vez
+  socket.on('lootbox:open', () => {
+    const sess = sessions.get(socket.id);
+    const room = sess && rooms.get(sess.roomCode);
+    if (!room || !sess?.playerId) return;
+    if (room.state.lastLootbox?.playerId !== sess.playerId) return;
+    io.to(room.code).emit('lootbox:open', { playerId: sess.playerId, at: Date.now() });
+  });
+
+  // Presencia de negociación: "X está negociando con Y" en la tabla en vivo
+  // Reacciones rápidas: reemplazan al chat. Solo un emoji de la lista, y como mucho uno por segundo.
+  socket.on('react', (raw) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return;
+      const { emoji } = ReactSchema.parse(raw);
+      const last = reactAt.get(sess.playerId) ?? 0;
+      if (Date.now() - last < 900) return;
+      reactAt.set(sess.playerId, Date.now());
+      io.to(room.code).emit('react', { playerId: sess.playerId, emoji, at: Date.now() });
+    } catch { /* ignorar */ }
+  });
+
+  socket.on('trade:drafting', (raw) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return;
+      const { toId } = DraftingSchema.parse(raw);
+      io.to(room.code).emit('trade:drafting', { fromId: sess.playerId, toId, at: Date.now() });
+    } catch { /* ignorar */ }
   });
 
   socket.on('chat:send', (raw, cb) => {
@@ -347,6 +504,31 @@ io.on('connection', (socket: Socket) => {
       cb?.(ok({}));
     } catch (e) { handleError(e, cb); }
   });
+
+  // Herramientas de prueba (solo con DEBUG_TOOLS=1): fijar posición y próximos dados para reproducir situaciones
+  if (process.env.DEBUG_TOOLS === '1') {
+    socket.on('debug:set', (raw, cb) => {
+      try {
+        const sess = sessions.get(socket.id);
+        const room = sess && rooms.get(sess.roomCode);
+        if (!room || !sess?.playerId) return cb?.(fail('Sin sala.'));
+        const st = structuredClone(room.state);
+        if (typeof raw?.position === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.position = raw.position; }
+        if (Array.isArray(raw?.dice)) {
+          for (let seed = 1; seed < 500000; seed++) { const r = rollDice(seed); if (r.dice[0] === raw.dice[0] && r.dice[1] === raw.dice[1]) { st.seed = seed; break; } }
+        }
+        if (typeof raw?.cash === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.cash = raw.cash; }
+        if (typeof raw?.give === 'number') { st.properties[raw.give] = { owner: raw.playerId ?? sess.playerId, houses: 0, mortgaged: false }; }
+        if (typeof raw?.duelTokens === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.duelTokens = raw.duelTokens; }
+        if (typeof raw?.arenaGame === 'string' && st.arena) st.arena.options[0] = raw.arenaGame;
+        if (typeof raw?.laps === 'number') { const p = st.players.find(x => x.id === (raw.playerId ?? sess.playerId)); if (p) p.lapsCompleted = raw.laps; }
+        if (typeof raw?.topCard === 'string') { for (const deck of ['chance', 'community'] as const) { const i = st.decks[deck].indexOf(raw.topCard); if (i >= 0) { st.decks[deck].splice(i, 1); st.decks[deck].unshift(raw.topCard); } } }
+        room.state = st;
+        broadcast(room);
+        cb?.(ok({}));
+      } catch (e) { handleError(e, cb); }
+    });
+  }
 
   socket.on('disconnect', () => {
     const sess = sessions.get(socket.id);
@@ -376,4 +558,4 @@ function sysMsg(room: Room, text: string) {
 }
 
 await app.listen({ port: PORT, host: HOST });
-app.log.info(`Ñandepoly escuchando en http://${HOST}:${PORT}`);
+app.log.info(`Ñandepoly escuchando en http://${HOST}:${PORT} · diccionario: ${DICT_SIZE} palabras`);

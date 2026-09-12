@@ -3,7 +3,7 @@ import { addPlayer, applyAction, createGame, rollDice, type Action, type GameSta
 const TOKENS: TokenId[] = ['mate', 'chipa', 'nanduti', 'carreta', 'jaguarete', 'arpa'];
 
 export function makeGame(n = 2, settings: Partial<GameSettings> = {}, seed = 42): GameState {
-  let s = createGame('TEST', 'p1', seed, settings);
+  let s = createGame('TEST', 'p1', seed, { ...settings });
   for (let i = 1; i <= n; i++) {
     s = addPlayer(s, { id: `p${i}`, name: `Jugador ${i}`, token: TOKENS[i - 1], color: '#000' });
   }

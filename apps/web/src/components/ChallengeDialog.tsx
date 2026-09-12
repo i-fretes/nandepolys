@@ -1,0 +1,417 @@
+import { useEffect, useState } from 'react';
+import { bjValue, challengeName, tile, type ChallengeKind, type PptChoice } from '@nandepoly/engine';
+import { useOverlayBusy, useSettled, useStore } from '../store';
+import { money, tokenEmoji } from '../format';
+import { sfx } from '../sound';
+import Modal from './Modal';
+import { Die3D } from './Dice';
+
+const KINDS: { id: ChallengeKind; icon: string; desc: string }[] = [
+  { id: 'dados', icon: '🎲', desc: 'Cada uno tira dos dados. El mayor gana. Puro azar.' },
+  { id: 'ppt', icon: '✊', desc: 'Piedra, papel o tijera al mejor de tres.' },
+  { id: 'trivia', icon: '🧠', desc: 'Pregunta sobre Paraguay. El primero que acierta gana.' },
+  { id: 'terere', icon: '🧉', desc: 'Cuando aparezca el tereré, tocá primero. Si te adelantás, perdés.' },
+  { id: 'blackjack', icon: '🃏', desc: 'Vos sos la banca y el rival apuesta. Pide, se planta o dobla; la banca pide hasta 17. Blackjack paga 3 a 2.' },
+];
+const PPT: { id: PptChoice; icon: string }[] = [{ id: 'piedra', icon: '✊' }, { id: 'papel', icon: '✋' }, { id: 'tijera', icon: '✌️' }];
+
+/** Botón "Desafiar" + diálogo de desafío en todas sus fases. */
+export default function ChallengeDialog() {
+  const state = useStore(s => s.state)!;
+  const me = useStore(s => s.playerId);
+  const act = useStore(s => s.act);
+  const openPicker = useStore(s => s.dialog === 'challenge');
+  const setDialog = useStore(s => s.setDialog);
+  const deadline = useStore(s => s.phaseDeadline);
+  const chEvents = useStore(s => s.challengeEvents);
+  const c = state.challenge;
+  const [now, setNow] = useState(Date.now());
+  const [result, setResult] = useState<{ id: number; data: Record<string, unknown>; text: string } | null>(null);
+
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(id); }, []);
+  // Mostrar el resultado final unos segundos aunque el estado ya haya vuelto al turno
+  const lastDone = [...chEvents].reverse().find(e => e.type === 'challenge_done');
+  useEffect(() => {
+    if (!lastDone) return;
+    setResult(lastDone);
+    const id = setTimeout(() => setResult(r => (r?.id === lastDone.id ? null : r)), (lastDone.data as { kind?: string }).kind === 'blackjack' ? 8000 : 4500);
+    return () => clearTimeout(id);
+  }, [lastDone?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const secs = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
+  // Nunca encima de la ficha en movimiento ni de una carta que se está leyendo
+  const busy = !useSettled(!useOverlayBusy());
+  if (busy) return <Modal open={false} />;
+  const name = (id: string | null | undefined) => state.players.find(p => p.id === id)?.name ?? '—';
+  const emoji = (id: string | null | undefined) => { const p = state.players.find(p => p.id === id); return p ? tokenEmoji(p.token) : ''; };
+
+  // Resultado final (splash)
+  if (result && !c) {
+    const d = result.data as { winner: string | null; loser?: string; amount: number; kind: ChallengeKind; bj?: NonNullable<Ch>['data']['bj'] };
+    const iWon = d.winner === me, iLost = d.loser === me;
+    return (
+      <Modal open onClose={() => setResult(null)} width={d.bj ? 'max-w-lg' : 'max-w-md'}>
+        {d.bj && <BjFinal bj={d.bj} name={name} />}
+        <div className="vs-splash text-center">
+          <div className="text-6xl">{d.winner ? '🏆' : '🤝'}</div>
+          <h2 className={`mt-2 text-2xl font-black ${iWon ? 'text-emerald-600' : iLost ? 'text-red-600' : ''}`}>
+            {d.winner ? `¡Ganó ${name(d.winner)}!` : 'Sin ganador'}
+          </h2>
+          <p className="mt-1 text-ink/70">{result.text}</p>
+          {d.amount > 0 && <div className="mt-3 text-3xl font-black text-emerald-700">+{money(d.amount)}</div>}
+          <button className="btn-ghost mt-4 w-full" onClick={() => setResult(null)}>Cerrar</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  // Elegir rival y mini-juego (por botón o por carta)
+  const picking = (c && c.status === 'pick' && c.fromId === me) || (openPicker && !c);
+  if (picking) return <Picker forced={!!c} amount={c?.amount ?? 100} onClose={() => setDialog(null)} secs={secs} />;
+
+  if (!c) return <Modal open={false} />;
+  const from = state.players.find(p => p.id === c.fromId)!;
+  const to = c.toId ? state.players.find(p => p.id === c.toId) : null;
+  const iAmIn = me === c.fromId || me === c.toId;
+
+  if (c.status === 'pick') {
+    return <Modal open width="max-w-sm"><p className="text-center text-ink/70">⚔️ {from.name} sacó una carta de ¡Desafío! y está eligiendo rival…</p></Modal>;
+  }
+
+  return (
+    <Modal open width="max-w-xl">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-black">⚔️ {challengeName(c.kind!)}</h2>
+        {secs !== null && <span className={`font-mono text-lg ${secs <= 5 ? 'text-red-600' : 'text-ink/60'}`}>{secs}s</span>}
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-3">
+        <Side name={from.name} emoji={emoji(from.id)} color={from.color} />
+        <div className="vs-splash text-2xl font-black text-py-red">VS</div>
+        <Side name={to?.name ?? '?'} emoji={emoji(to?.id)} color={to?.color ?? '#999'} />
+      </div>
+      <div className="mt-1 text-center text-sm text-ink/60">
+        {c.rent
+          ? <>💵 <b>Doble o nada</b> del alquiler de {tile(c.rent.tileId).name}: si gana <b>{name(c.rent.payerId)}</b> no paga nada; si gana <b>{name(c.rent.ownerId)}</b> cobra <b>{money(c.rent.rent * 2)}</b>. Empate: se paga {money(c.rent.rent)}.</>
+          : <>Se juega por <b>{money(c.amount)}</b>{c.forced ? ' · por carta, no se puede rechazar' : ''}</>}
+      </div>
+
+      {c.status === 'pending' && (
+        me === c.toId ? (
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <button className="btn-ghost py-3" onClick={() => act({ type: 'CHALLENGE_REJECT' })}>No, gracias</button>
+            <button className="btn-primary breathe py-3" onClick={() => act({ type: 'CHALLENGE_ACCEPT' })}>¡Acepto! ⚔️</button>
+          </div>
+        ) : <p className="mt-4 animate-pulse text-center text-ink/60">Esperando que {to?.name} acepte…</p>
+      )}
+
+      {c.status === 'playing' && c.kind === 'ppt' && <Ppt c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
+      {c.status === 'playing' && c.kind === 'trivia' && <Trivia c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
+      {c.status === 'playing' && c.kind === 'terere' && <Terere c={c} iAmIn={iAmIn} act={act} />}
+      {c.status === 'playing' && c.kind === 'dados' && <Dados c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
+      {c.status === 'playing' && c.kind === 'blackjack' && <Blackjack c={c} me={me} act={act} name={name} />}
+    </Modal>
+  );
+}
+
+function Side({ name, emoji, color }: { name: string; emoji: string; color: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <span className="grid h-14 w-14 place-items-center rounded-full bg-white text-3xl" style={{ boxShadow: `0 0 0 4px ${color}` }}>{emoji}</span>
+      <span className="mt-1 max-w-[120px] truncate font-bold">{name}</span>
+    </div>
+  );
+}
+
+function Picker({ forced, amount: fixed, onClose, secs }: { forced: boolean; amount: number; onClose: () => void; secs: number | null }) {
+  const state = useStore(s => s.state)!;
+  const me = useStore(s => s.playerId);
+  const act = useStore(s => s.act);
+  const rivals = state.players.filter(p => !p.bankrupt && p.id !== me && p.cash > 0);
+  const [toId, setToId] = useState(rivals[0]?.id ?? '');
+  const [kind, setKind] = useState<ChallengeKind>('dados');
+  const [amount, setAmount] = useState(100);
+  const myCash = state.players.find(p => p.id === me)?.cash ?? 0;
+  const rival = rivals.find(r => r.id === toId);
+  const max = Math.min(myCash, rival?.cash ?? 0);
+  const amt = forced ? Math.min(fixed, max) : Math.min(amount, max);
+
+  return (
+    <Modal open onClose={forced ? undefined : onClose} width="max-w-xl">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-black">⚔️ {forced ? '¡Desafío obligatorio!' : 'Desafiar a un jugador'}</h2>
+        {secs !== null && forced && <span className="font-mono text-ink/60">{secs}s</span>}
+      </div>
+      {forced && <p className="mt-1 text-sm text-ink/70">Sacaste la carta ¡Desafío!: elegí rival y mini-juego. Se juega por {money(amt)} y el rival no puede negarse.</p>}
+      <div className="mt-3 text-sm font-semibold">Rival</div>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {rivals.map(p => (
+          <button key={p.id} onClick={() => setToId(p.id)} className={`flex items-center gap-2 rounded-xl border-2 px-3 py-1.5 ${toId === p.id ? 'border-py-red bg-red-50' : 'border-black/10 bg-white'}`}>
+            <span>{tokenEmoji(p.token)}</span><b>{p.name}</b><span className="text-xs text-ink/50">{money(p.cash)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 text-sm font-semibold">Mini-juego</div>
+      <div className="mt-1 grid gap-2 sm:grid-cols-2">
+        {KINDS.map(k => (
+          <button key={k.id} onClick={() => setKind(k.id)} className={`rounded-xl border-2 p-3 text-left ${kind === k.id ? 'border-py-red bg-red-50' : 'border-black/10 bg-white'}`}>
+            <div className="text-lg font-bold">{k.icon} {challengeName(k.id)}</div>
+            <div className="text-xs text-ink/60">{k.desc}</div>
+          </button>
+        ))}
+      </div>
+      {!forced && (
+        <>
+          <div className="mt-3 text-sm font-semibold">Apuesta (máximo {money(max)})</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {[50, 100, 200, 500].filter(v => v <= max).map(v => (
+              <button key={v} className={`btn-ghost btn-sm ${amount === v ? '!bg-red-50 !border-py-red' : ''}`} onClick={() => setAmount(v)}>{v} mil</button>
+            ))}
+            <input type="number" className="input !w-28 !py-1" min={10} max={max} step={10} value={amount} onChange={e => setAmount(Math.max(10, Math.min(max, Math.floor(Number(e.target.value) || 0))))} />
+          </div>
+        </>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        {!forced && <button className="btn-ghost" onClick={onClose}>Cancelar</button>}
+        <button className="btn-primary" disabled={!toId || amt < 10 && !forced} onClick={async () => {
+          const ok = await act({ type: 'CHALLENGE_PROPOSE', toId, kind, amount: amt });
+          if (ok && !forced) onClose();
+        }}>{forced ? '¡A jugar!' : `Desafiar por ${money(amt)}`}</button>
+      </div>
+    </Modal>
+  );
+}
+
+// --- Piedra, papel o tijera ------------------------------------------------------------------
+function Ppt({ c, me, iAmIn, act, name }: { c: NonNullable<ReturnType<typeof useStore.getState>['state']>['challenge'] & object; me: string | null; iAmIn: boolean; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean>; name: (id: string) => string }) {
+  const ch = c!;
+  const rounds = ch.data.rounds ?? [];
+  const score = ch.data.score ?? {};
+  const chosen = ch.data.chosen ?? [];
+  const iChose = !!me && chosen.includes(me);
+  const [picked, setPicked] = useState<PptChoice | null>(null);
+  useEffect(() => { if (!iChose) setPicked(null); }, [iChose, rounds.length]);
+  const lastRound = rounds[rounds.length - 1];
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-center gap-6 text-2xl font-black">
+        <span>{score[ch.fromId] ?? 0}</span><span className="text-sm text-ink/50">mejor de 3</span><span>{score[ch.toId!] ?? 0}</span>
+      </div>
+      {lastRound && (
+        <div key={rounds.length} className="reveal mt-2 flex items-center justify-center gap-4 text-4xl">
+          <span>{PPT.find(p => p.id === lastRound.a)!.icon}</span>
+          <span className="text-base font-bold text-ink/60">{lastRound.winner ? `punto ${name(lastRound.winner)}` : 'empate'}</span>
+          <span>{PPT.find(p => p.id === lastRound.b)!.icon}</span>
+        </div>
+      )}
+      {iAmIn ? (
+        <div className="mt-4">
+          <div className="flex justify-center gap-3">
+            {PPT.map(p => (
+              <button key={p.id} className={`ppt-btn ${picked === p.id ? 'picked' : ''}`} disabled={iChose} title={p.id}
+                onClick={() => { setPicked(p.id); sfx.tick(); act({ type: 'CHALLENGE_MOVE', choice: p.id }); }}>{p.icon}</button>
+            ))}
+          </div>
+          <p className="mt-2 text-center text-sm text-ink/60">{iChose ? 'Esperando al rival…' : 'Elegí en secreto'}</p>
+        </div>
+      ) : <p className="mt-4 text-center text-sm text-ink/60">Eligiendo… ({chosen.length}/2)</p>}
+    </div>
+  );
+}
+
+// --- Trivia -----------------------------------------------------------------------------------
+function Trivia({ c, me, iAmIn, act, name }: { c: NonNullable<ReturnType<typeof useStore.getState>['state']>['challenge'] & object; me: string | null; iAmIn: boolean; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean>; name: (id: string) => string }) {
+  const ch = c!;
+  const q = ch.data.question;
+  const answered = ch.data.answered ?? {};
+  const mine = me ? answered[me] : undefined;
+  const chEvents = useStore(s => s.challengeEvents);
+  const reveal = [...chEvents].reverse().find(e => e.type === 'challenge_round' && e.data.reveal !== undefined);
+  const others = Object.entries(answered).filter(([id]) => id !== me);
+  if (!q) return null;
+  return (
+    <div className="mt-3">
+      <div className="text-center text-xs font-semibold uppercase tracking-wider text-ink/50">Pregunta {(ch.data.qIndex ?? 0) + 1} de 3</div>
+      <div key={q.q} className="reveal mt-1 rounded-2xl bg-cream p-4 text-center text-lg font-bold">{q.q}</div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {q.options.map((opt, i) => {
+          const wrongMine = mine === i;
+          const wrongOther = others.some(([, a]) => a === i);
+          return (
+            <button key={i} disabled={!iAmIn || mine !== undefined} data-answer={i}
+              onClick={() => { sfx.tick(); act({ type: 'CHALLENGE_MOVE', answer: i }); }}
+              className={`rounded-xl border-2 px-3 py-3 text-left font-semibold transition ${wrongMine ? 'border-red-400 bg-red-50 line-through' : 'border-black/10 bg-white hover:border-py-blue'} disabled:cursor-default`}>
+              <span className="mr-2 inline-grid h-6 w-6 place-items-center rounded-full bg-py-blue text-xs text-white">{'ABCD'[i]}</span>{opt}
+              {wrongOther && <span className="ml-2 text-xs text-ink/50">✗ {others.filter(([, a]) => a === i).map(([id]) => name(id)).join(', ')}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-center text-sm text-ink/60">
+        {!iAmIn ? 'Mirando…' : mine === undefined ? 'El primero que acierta gana. Si fallás, el rival todavía puede acertar.' : 'Fallaste. Cruzá los dedos para que el rival también…'}
+        {reveal && (reveal.data.reveal !== undefined) && ' '}
+      </p>
+    </div>
+  );
+}
+
+// --- Duelo de dados ----------------------------------------------------------------------------
+type Ch = NonNullable<ReturnType<typeof useStore.getState>['state']>['challenge'] & object;
+function Dados({ c, me, iAmIn, act, name }: { c: Ch; me: string | null; iAmIn: boolean; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean>; name: (id: string | null | undefined) => string }) {
+  const rolls = (c!.data.rolls ?? {}) as Record<string, [number, number]>;
+  const last = (c!.data.lastRolls ?? {}) as Record<string, [number, number]>;
+  const ids = [c!.fromId, c!.toId!];
+  const mine = me ? rolls[me] : undefined;
+  const [rollingFor, setRollingFor] = useState<Record<string, number>>({});
+  useEffect(() => {
+    // animar el dado del que acaba de tirar
+    for (const id of ids) if (rolls[id] && !rollingFor[id]) { setRollingFor(r => ({ ...r, [id]: Date.now() })); sfx.dice(); }
+    if (!Object.keys(rolls).length && Object.keys(rollingFor).length) setRollingFor({});
+  }, [rolls[ids[0]]?.join(), rolls[ids[1]]?.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const now = Date.now();
+  return (
+    <div className="mt-3">
+      {(c!.data.round ?? 1) > 1 && Object.keys(last).length > 0 && (
+        <div className="mb-2 rounded-lg bg-amber-50 px-3 py-1 text-center text-xs font-bold text-amber-800">
+          Empate {last[ids[0]]?.[0] + last[ids[0]]?.[1]} a {last[ids[1]]?.[0] + last[ids[1]]?.[1]} · ¡se tira de nuevo! (ronda {c!.data.round})
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        {ids.map(id => {
+          const r = rolls[id];
+          const rolling = !!r && now - (rollingFor[id] ?? 0) < 1000;
+          return (
+            <div key={id} className={`rounded-xl p-3 text-center ${r ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+              <div className="text-sm font-bold">{name(id)}</div>
+              <div className="my-2 flex justify-center gap-3">
+                <Die3D value={r?.[0] ?? null} rolling={rolling} size="56px" />
+                <Die3D value={r?.[1] ?? null} rolling={rolling} size="56px" />
+              </div>
+              <div className="text-xl font-black">{r ? r[0] + r[1] : <span className="text-ink/30">?</span>}</div>
+            </div>
+          );
+        })}
+      </div>
+      {iAmIn ? (
+        mine ? <p className="mt-3 text-center text-sm text-ink/60">Ya tiraste. Esperando al rival…</p>
+          : <button data-roll-dados className="btn-primary breathe mt-3 w-full py-4 text-xl" onClick={() => act({ type: 'CHALLENGE_MOVE' })}>🎲 ¡Tirar los dados!</button>
+      ) : <p className="mt-3 text-center text-sm text-ink/60">Mirando el duelo…</p>}
+    </div>
+  );
+}
+
+// --- Tereré caliente --------------------------------------------------------------------------
+function Terere({ c, iAmIn, act }: { c: NonNullable<ReturnType<typeof useStore.getState>['state']>['challenge'] & object; iAmIn: boolean; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean> }) {
+  const go = !!c!.data.go;
+  const [tapped, setTapped] = useState(false);
+  useEffect(() => { setTapped(false); }, [c!.id]);
+  const tap = () => { if (!iAmIn || tapped) return; setTapped(true); act({ type: 'CHALLENGE_MOVE' }); };
+  return (
+    <div className="mt-3">
+      {go ? (
+        <button data-terere className="terere-go w-full" onPointerDown={tap} disabled={!iAmIn || tapped}>
+          <div className="text-center"><div className="icon">🧉</div><div className="text-3xl font-black">{tapped ? '¡Tocaste!' : '¡TERERÉ! ¡TOCÁ YA!'}</div></div>
+        </button>
+      ) : (
+        <button data-terere className="terere-wait w-full" onPointerDown={tap} disabled={!iAmIn || tapped}>
+          <div className="text-center"><div className="text-5xl opacity-40">🧉</div><div className="mt-2">Esperá… cuando se ponga VERDE, tocá lo más rápido que puedas.</div><div className="text-xs opacity-60">Si tocás antes, perdés.</div></div>
+        </button>
+      )}
+      {!iAmIn && <p className="mt-2 text-center text-sm text-ink/60">Mirando el duelo de reflejos…</p>}
+    </div>
+  );
+}
+
+
+// --- Blackjack ---------------------------------------------------------------------------------
+const SUITS = ['♠', '♥', '♦', '♣'];
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+/** Una carta de la baraja francesa; `hidden` la muestra boca abajo. */
+function BjCard({ card, hidden, delay }: { card: number; hidden?: boolean; delay?: number }) {
+  const suit = SUITS[Math.floor(card / 13)], rank = RANKS[card % 13];
+  const red = suit === '♥' || suit === '♦';
+  return (
+    <div className={`bjcard ${hidden ? 'hidden' : ''} ${red ? 'red' : ''}`} style={{ animationDelay: `${delay ?? 0}ms` }}>
+      {hidden ? <span className="bj-back">🇵🇾</span> : (<>
+        <span className="bj-corner">{rank}<small>{suit}</small></span>
+        <span className="bj-suit">{suit}</span>
+        <span className="bj-corner flip">{rank}<small>{suit}</small></span>
+      </>)}
+    </div>
+  );
+}
+
+function Blackjack({ c, me, act, name }: { c: Ch; me: string | null; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean>; name: (id: string | null | undefined) => string }) {
+  const bj = c!.data.bj;
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setBusy(false); }, [bj?.hands, bj?.stage]);
+  useEffect(() => { sfx.card(); }, [bj?.hands[bj?.bettor ?? '']?.length, bj?.hands[bj?.house ?? '']?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!bj) return null;
+  const iBet = me === bj.bettor;
+  const iHouse = me === bj.house;
+  const my = bj.hands[bj.bettor], hs = bj.hands[bj.house];
+  const myV = bjValue(my);
+  const houseShown = bj.hidden ? bjValue([hs[0]]) : bjValue(hs);
+  const canDouble = bj.stage === 'bettor' && my.length === 2;
+  const play = (bjMove: 'hit' | 'stand' | 'double') => { setBusy(true); void act({ type: 'CHALLENGE_MOVE', bj: bjMove }); };
+  const total = (v: { total: number; soft: boolean }, done: boolean) => v.total > 21 ? `${v.total} · se pasó` : v.total === 21 && done ? '21' : v.soft && !done ? `${v.total} (o ${v.total - 10})` : String(v.total);
+
+  return (
+    <div className="bjtable mt-4">
+      <div className="bj-row">
+        <div className="bj-label">
+          <b>{name(bj.house)}</b> · la banca {bj.hidden ? <span className="opacity-70">muestra {houseShown.total}</span> : <span>tiene <b>{total(bjValue(hs), true)}</b></span>}
+        </div>
+        <div className="bj-hand">{hs.map((card, i) => <BjCard key={`${card}-${i}`} card={card} hidden={bj.hidden && i === 1} delay={i * 120} />)}</div>
+      </div>
+      <div className="bj-mid">
+        <span className="bj-stake">En juego: {money(bj.stake)}{bj.doubled ? ' (doblada)' : ''}</span>
+        {bj.stage === 'done' && bj.result && (
+          <span className={`bj-result reveal ${bj.result === 'house' ? 'lose' : bj.result === 'push' ? 'push' : 'win'}`}>
+            {bj.result === 'blackjack' ? '¡BLACKJACK! paga 3 a 2' : bj.result === 'bettor' ? `Gana ${name(bj.bettor)}` : bj.result === 'push' ? 'Empate: nadie paga' : `Gana la banca`}
+          </span>
+        )}
+      </div>
+      <div className="bj-row">
+        <div className="bj-label"><b>{name(bj.bettor)}</b> · apuesta · tiene <b>{total(myV, bj.stage !== 'bettor')}</b></div>
+        <div className="bj-hand">{my.map((card, i) => <BjCard key={`${card}-${i}`} card={card} delay={i * 120} />)}</div>
+      </div>
+
+      {bj.stage === 'bettor' && iBet && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button data-bj="hit" className="duel-btn quiero" disabled={busy} onClick={() => play('hit')}>Pedir<span className="duel-sub">una carta más</span></button>
+          <button data-bj="stand" className="duel-btn" style={{ background: 'linear-gradient(180deg,#3b82f6,#1e40af)' }} disabled={busy} onClick={() => play('stand')}>Plantarme<span className="duel-sub">con {myV.total}</span></button>
+          <button data-bj="double" className="duel-btn" style={{ background: 'linear-gradient(180deg,#f59e0b,#b45309)', opacity: canDouble ? 1 : .4 }} disabled={busy || !canDouble} onClick={() => play('double')}>Doblar<span className="duel-sub">{money(bj.stake * 2)} · una carta</span></button>
+        </div>
+      )}
+      {bj.stage === 'bettor' && iHouse && <p className="mt-3 text-center text-sm text-ink/60">Sos la banca: esperá la decisión de {name(bj.bettor)}. Después pedís hasta 17 automáticamente.</p>}
+      {bj.stage === 'bettor' && !iBet && !iHouse && <p className="mt-3 text-center text-sm text-ink/60">{name(bj.bettor)} está decidiendo…</p>}
+      <p className="mt-2 text-center text-[11px] text-ink/45">Los ases valen 11 o 1. Figuras valen 10. La banca pide hasta 17 y se planta. Empate devuelve la apuesta.</p>
+    </div>
+  );
+}
+
+/** Mesa final del blackjack (ya cerrada): las dos manos destapadas y el resultado. */
+function BjFinal({ bj, name }: { bj: NonNullable<NonNullable<Ch>['data']['bj']>; name: (id: string | null | undefined) => string }) {
+  const hs = bj.hands[bj.house], my = bj.hands[bj.bettor];
+  return (
+    <div className="bjtable mb-3">
+      <div className="bj-row">
+        <div className="bj-label"><b>{name(bj.house)}</b> · la banca · <b>{bjValue(hs).total}</b>{bjValue(hs).total > 21 ? ' · se pasó' : ''}</div>
+        <div className="bj-hand">{hs.map((card, i) => <BjCard key={`${card}-${i}`} card={card} delay={i * 90} />)}</div>
+      </div>
+      <div className="bj-mid">
+        <span className="bj-stake">Se jugó {money(bj.stake)}{bj.doubled ? ' (doblada)' : ''}</span>
+        {bj.result && (
+          <span className={`bj-result reveal ${bj.result === 'house' ? 'lose' : bj.result === 'push' ? 'push' : 'win'}`}>
+            {bj.result === 'blackjack' ? '¡BLACKJACK! paga 3 a 2' : bj.result === 'bettor' ? `Gana ${name(bj.bettor)}` : bj.result === 'push' ? 'Empate: nadie paga' : 'Gana la banca'}
+          </span>
+        )}
+      </div>
+      <div className="bj-row">
+        <div className="bj-label"><b>{name(bj.bettor)}</b> · apuesta · <b>{bjValue(my).total}</b>{bjValue(my).total > 21 ? ' · se pasó' : ''}</div>
+        <div className="bj-hand">{my.map((card, i) => <BjCard key={`${card}-${i}`} card={card} delay={i * 90} />)}</div>
+      </div>
+    </div>
+  );
+}
