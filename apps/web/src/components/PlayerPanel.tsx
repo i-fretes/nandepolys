@@ -1,6 +1,7 @@
-import { BOARD, GROUP_COLORS, isProperty, netWorth, type GameState } from '@nandepoly/engine';
+import { BOARD, GROUP_COLORS, isProperty, netWorth, rentFor, type GameState, type PropertyTile } from '@nandepoly/engine';
 import { useStore } from '../store';
-import { money, tokenEmoji } from '../format';
+import { money } from '../format';
+import { PlayerToken } from './Pieces';
 import AnimatedNumber from './AnimatedNumber';
 
 export default function PlayerPanel() {
@@ -20,7 +21,7 @@ export default function PlayerPanel() {
         return (
           <div key={p.id} data-player-card={p.id} className={`card relative p-3 transition ${isCurrent ? 'ring-2 ring-py-red' : ''} ${p.bankrupt ? 'opacity-50 grayscale' : ''}`}>
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-xl" style={{ boxShadow: `0 0 0 3px ${p.color}` }}>{tokenEmoji(p.token)}</span>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white" style={{ boxShadow: `0 0 0 3px ${p.color}` }}><PlayerToken token={p.token} color={p.color} size="30px" /></span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-bold">{p.name}</span>
@@ -59,28 +60,29 @@ export default function PlayerPanel() {
             )}
             {props.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
-                {props.map(t => {
-                  const ps = state.properties[t.id];
-                  const color = t.type === 'street' ? GROUP_COLORS[t.group] : t.type === 'transport' ? '#37474F' : '#C9A227';
-                  return (
-                    <button
-                      key={t.id} onClick={() => setSelected(t.id)} title={t.name}
-                      className={`relative h-6 w-4 rounded-sm border border-black/20 ${ps.mortgaged ? 'opacity-40' : ''}`}
-                      style={{ background: color }}
-                    >
-                      {ps.houses > 0 && (
-                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded bg-white px-0.5 text-[9px] font-bold leading-none shadow">
-                          {ps.houses === 5 ? 'H' : ps.houses}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                {props.map(t => <MiniDeed key={t.id} t={t} state={state as unknown as GameState} onOpen={() => setSelected(t.id)} />)}
               </div>
             )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** Título de propiedad en chico: franja del color, nombre, casas/hotel y el alquiler que se cobra hoy. */
+function MiniDeed({ t, state, onOpen }: { t: PropertyTile; state: GameState; onOpen: () => void }) {
+  const ps = state.properties[t.id];
+  const color = t.type === 'street' ? GROUP_COLORS[t.group] : t.type === 'transport' ? '#37474F' : '#C9A227';
+  const rent = rentFor(state, t.id, 7);
+  return (
+    <button onClick={onOpen} title={`${t.name} · tocá para ver el título`}
+      className={`mini-deed ${ps.mortgaged ? 'mortgaged' : ''}`}>
+      <span className="md-band" style={{ background: color }}>
+        {ps.houses === 5 ? <span className="md-hotel" /> : Array.from({ length: ps.houses }).map((_, i) => <span key={i} className="md-house" />)}
+      </span>
+      <span className="md-name">{t.name}</span>
+      <span className="md-rent">{ps.mortgaged ? 'hipotecada' : money(rent)}</span>
+    </button>
   );
 }

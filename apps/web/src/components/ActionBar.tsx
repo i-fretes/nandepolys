@@ -20,7 +20,11 @@ export default function ActionBar() {
   const mgmt = (
     <>
       <button className="btn-ghost btn-sm" onClick={() => setDialog('manage')} disabled={!(legal.has('BUILD') || legal.has('SELL_BUILDING') || legal.has('MORTGAGE') || legal.has('UNMORTGAGE'))}>🏠 Propiedades</button>
-      <button className="btn-ghost btn-sm" onClick={() => setDialog('trade')} disabled={!legal.has('TRADE_PROPOSE')}>🤝 Intercambiar</button>
+      <button className={`btn-ghost btn-sm ${legal.has('TRADE_BUTT_IN') ? 'breathe !border-amber-400' : ''}`} onClick={() => setDialog('trade')}
+        disabled={!(legal.has('TRADE_PROPOSE') || legal.has('TRADE_BUTT_IN')) && !state.tradeRivals?.some(r => r.fromId === me.id)}
+        title={legal.has('TRADE_BUTT_IN') ? 'Hay un trato en la mesa: podés meterte de metiche' : 'Proponer un intercambio'}>
+        {legal.has('TRADE_BUTT_IN') ? '🕵️ Meterme' : '🤝 Intercambiar'}
+      </button>
       {state.settings.challenges && <button className="btn-ghost btn-sm" onClick={() => setDialog('challenge')} disabled={!legal.has('CHALLENGE_PROPOSE')}>⚔️ Desafiar</button>}
       {state.settings.duels && (
         <button className={`btn-ghost btn-sm ${legal.has('DUEL_PROPOSE') ? 'duel-ready' : ''}`} onClick={() => setDialog('duel')} disabled={!legal.has('DUEL_PROPOSE')} title={me.duelTokens > 0 ? 'Tenés ficha de duelo' : 'Ganás una ficha cada 3 vueltas'}>

@@ -22,17 +22,27 @@ describe('casino', () => {
     expect(t.players[0].cash).toBe(1400);
   });
 
-  it('con la opción, caer en la 39 abre el Casino y se puede salir sin apostar', () => {
+  it('caer en el Casino abre la mesa para todos: el que cayó apuesta sí o sí, los demás pueden pasar', () => {
     let s = casinoGame();
     s = landOnCasino(s);
+    const [a, b] = s.players.map(p => p.id);
     expect(s.turnPhase).toBe('CASINO');
-    expect(s.players[0].cash).toBe(1500);
-    const legal = legalActions(s, s.players[0].id);
-    expect(legal.has('CASINO_PLAY')).toBe(true);
-    expect(legal.has('CASINO_LEAVE')).toBe(true);
-    const r = act(s, { type: 'CASINO_LEAVE', playerId: s.players[0].id });
-    expect(r.state.turnPhase).toBe('END_TURN');
+    expect(s.casino!.triggeredBy).toBe(a);
+    expect(s.casino!.players).toContain(b);
+    // los dos pueden jugar
+    expect(legalActions(s, a).has('CASINO_PLAY')).toBe(true);
+    expect(legalActions(s, b).has('CASINO_PLAY')).toBe(true);
+    // el que cayó no puede irse sin apostar
+    expect(() => act(s, { type: 'CASINO_LEAVE', playerId: a })).toThrow('tenés que apostar');
+    // el otro sí
+    let r = act(s, { type: 'CASINO_LEAVE', playerId: b });
+    expect(r.state.turnPhase).toBe('CASINO');
+    expect(r.state.casino!.passed[b]).toBe(true);
+    // cuando el que cayó apuesta y se va, se cierra la mesa
+    r = act(r.state, { type: 'CASINO_PLAY', playerId: a, game: 'ruleta', amount: 50 });
+    r = act(r.state, { type: 'CASINO_LEAVE', playerId: a });
     expect(r.state.casino).toBeNull();
+    expect(r.state.turnPhase).toBe('END_TURN');
   });
 
   it('ruleta: gana o pierde exactamente la apuesta; lo perdido va al jackpot; una apuesta por visita', () => {
@@ -55,7 +65,7 @@ describe('casino', () => {
     const N = 3000;
     const base = casinoGame(2);
     for (let i = 0; i < N; i++) {
-      const s: GameState = { ...base, seed: i * 7919 + 13, turnPhase: 'CASINO', casino: { playerId: base.players[0].id, played: false, double: null } };
+      const s: GameState = { ...base, seed: i * 7919 + 13, turnPhase: 'CASINO', casino: { triggeredBy: base.players[0].id, players: base.players.map(x => x.id), played: {}, passed: {}, double: {} } };
       const r = act(s, { type: 'CASINO_PLAY', playerId: s.players[0].id, game: 'ruleta', amount: 50 });
       if (r.events.find(e => e.type === 'casino_result')!.data!.win) wins++;
     }
@@ -88,24 +98,24 @@ describe('casino', () => {
     // forzar par: buscamos una semilla cuyo próximo tiro sea par
     let st = { ...s, seed: seedFor([2, 4]) };
     let r = act(st, { type: 'CASINO_DOUBLE_START', playerId: a, amount: 100 });
-    expect(r.state.casino?.double).toEqual({ stake: 200, step: 1 });
+    expect(r.state.casino?.double[a]).toEqual({ stake: 200, step: 1 });
     expect(r.state.players[0].cash).toBe(1400);
     r = act(r.state, { type: 'CASINO_CASHOUT', playerId: a });
     expect(r.state.players[0].cash).toBe(1600);
-    expect(r.state.casino?.double).toBeNull();
+    expect(r.state.casino?.double[a]).toBeNull();
     // impar pierde
     st = { ...s, seed: seedFor([1, 2]) };
     r = act(st, { type: 'CASINO_DOUBLE_START', playerId: a, amount: 100 });
     expect(r.state.players[0].cash).toBe(1400);
     expect(r.state.jackpot).toBe(100);
-    expect(r.state.casino?.double).toBeNull();
+    expect(r.state.casino?.double[a]).toBeNull();
     // cuatro pares seguidos → cobra 16x
     st = { ...s, seed: seedFor([2, 4]) };
     r = act(st, { type: 'CASINO_DOUBLE_START', playerId: a, amount: 10 });
-    for (let i = 0; i < 3 && r.state.casino?.double; i++) {
+    for (let i = 0; i < 3 && r.state.casino?.double[a]; i++) {
       r = act({ ...r.state, seed: seedFor([3, 3]) }, { type: 'CASINO_DOUBLE_CONTINUE', playerId: a });
     }
-    expect(r.state.casino?.double).toBeNull();
+    expect(r.state.casino?.double[a]).toBeNull();
     expect(r.state.players[0].cash).toBe(1500 - 10 + 160);
   });
 

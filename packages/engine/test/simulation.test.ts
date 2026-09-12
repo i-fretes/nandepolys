@@ -80,16 +80,19 @@ function randomAction(s: GameState, rnd: () => number, now = 0): Action | null {
   switch (s.turnPhase) {
     case 'CASINO': {
       const c = s.casino!;
-      if (c.double) return rnd() < 0.5 ? { type: 'CASINO_DOUBLE_CONTINUE', playerId: c.playerId } : { type: 'CASINO_CASHOUT', playerId: c.playerId };
-      if (c.played) return { type: 'CASINO_LEAVE', playerId: c.playerId };
-      const cash = s.players.find(x => x.id === c.playerId)!.cash;
+      // Juega el primero que le falte resolver (la mesa está abierta para todos)
+      const id = c.players.find(x => !c.passed[x] && !s.players.find(y => y.id === x)!.bankrupt);
+      if (!id) return null;
+      if (c.double[id]) return rnd() < 0.5 ? { type: 'CASINO_DOUBLE_CONTINUE', playerId: id } : { type: 'CASINO_CASHOUT', playerId: id };
+      if (c.played[id]) return { type: 'CASINO_LEAVE', playerId: id };
+      const cash = s.players.find(x => x.id === id)!.cash;
       const amount = Math.min(s.settings.casinoMaxBet, Math.max(10, Math.floor(cash / 10)));
-      if (cash < 10 || rnd() < 0.2) return { type: 'CASINO_LEAVE', playerId: c.playerId };
+      if (cash < 10 || (rnd() < 0.2 && id !== c.triggeredBy)) return { type: 'CASINO_LEAVE', playerId: id };
       const k = rnd();
-      if (k < 0.25) return { type: 'CASINO_PLAY', playerId: c.playerId, game: 'ruleta', amount };
-      if (k < 0.5) return { type: 'CASINO_PLAY', playerId: c.playerId, game: 'quiniela', amount, pick: 2 + Math.floor(rnd() * 11) };
-      if (k < 0.75) return { type: 'CASINO_PLAY', playerId: c.playerId, game: 'carrera', amount, pick: Math.floor(rnd() * 6) };
-      return { type: 'CASINO_DOUBLE_START', playerId: c.playerId, amount };
+      if (k < 0.25) return { type: 'CASINO_PLAY', playerId: id, game: 'ruleta', amount };
+      if (k < 0.5) return { type: 'CASINO_PLAY', playerId: id, game: 'quiniela', amount, pick: 2 + Math.floor(rnd() * 11) };
+      if (k < 0.75) return { type: 'CASINO_PLAY', playerId: id, game: 'carrera', amount, pick: Math.floor(rnd() * 6) };
+      return { type: 'CASINO_DOUBLE_START', playerId: id, amount };
     }
     case 'RENT_OFFER': {
       const o = s.rentOffer!;

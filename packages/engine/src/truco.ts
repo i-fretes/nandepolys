@@ -79,7 +79,7 @@ export function cardName(c: TCard): string {
   return `${names[c.r]} de ${c.s}`;
 }
 
-export function newTruco(a: string, b: string, seed: number, target = 15, maxHands = 2): TrucoState {
+export function newTruco(a: string, b: string, seed: number, target = 15, maxHands = 3): TrucoState {
   const st: TrucoState = {
     pub: {
       scores: { [a]: 0, [b]: 0 }, target, maxHands, hand: 0, dealer: b, mano: a, turn: a, table: { [a]: [], [b]: [] },

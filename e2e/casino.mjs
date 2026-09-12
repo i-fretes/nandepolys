@@ -6,6 +6,15 @@ const BASE = process.argv[2] ?? 'http://localhost:8080';
 const OUT = process.argv[3] ?? 'e2e/casino';
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined });
+
+// El dado ñandú se apaga en las pruebas: cambian las casillas donde se cae
+async function offNandu(page) {
+  const cb = page.locator('label', { hasText: 'Dado ñandú' }).locator('input[type=checkbox]');
+  if (await cb.count() && await cb.isChecked()) {
+    await cb.click();
+    await page.waitForFunction(el => !el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
+  }
+}
 const log = (...a) => console.log(...a);
 const ok = (cond, msg) => { log(cond ? '✔' : '✘', msg); if (!cond) process.exitCode = 1; };
 
@@ -47,6 +56,7 @@ for (const label of ['Casinos', 'Jackpot', 'Alquiler a doble o nada', 'Desafíos
 }
 await a.waitForTimeout(400);
 await a.screenshot({ path: `${OUT}/lobby-timba.png` });
+await offNandu(a);
 await a.click('button:has-text("Empezar partida")');
 await Promise.all([a, b, c].map(p => p.waitForSelector('.board')));
 
@@ -59,17 +69,18 @@ log('empieza', firstName);
 // 1) Casino: fijar posición 36 y dados 1+2 → 39
 await dbg(cur, { position: 36, dice: [1, 2] });
 await click(cur, 'Tirar dados');
-await cur.waitForSelector('text=Casino', { timeout: 8000 });
+await cur.waitForSelector('button:has-text("Apostar")', { timeout: 8000 });
 await cur.waitForTimeout(700);
 await cur.screenshot({ path: `${OUT}/casino-mesas.png` });
+for (const p of [a, b, c]) if (p !== cur) await clickIf(p, 'Paso, no apuesto');
 await cur.locator('button:has-text("200 mil")').first().click();
 await click(cur, 'Apostar');
 await cur.waitForTimeout(1500);
 await cur.screenshot({ path: `${OUT}/casino-ruleta-girando.png` });
 await cur.waitForTimeout(2600);
 await cur.screenshot({ path: `${OUT}/casino-ruleta-resultado.png` });
-ok(await cur.locator('text=Salir del Casino').count() > 0, 'ruleta jugada');
-await click(cur, 'Salir del Casino');
+ok(await cur.locator('text=Listo, salgo del Casino').count() > 0, 'ruleta jugada');
+await click(cur, 'Listo, salgo del Casino');
 await cur.waitForSelector('button:has-text("Terminar turno")');
 await cur.waitForTimeout(500);
 await click(cur, 'Terminar turno');
@@ -82,14 +93,15 @@ const second = await turnOf();
 const cur2 = pages[second.replace('Turno de ', '')];
 await dbg(cur2, { position: 36, dice: [1, 2] });
 await click(cur2, 'Tirar dados');
-await cur2.waitForSelector('text=Casino', { timeout: 8000 });
+await cur2.waitForSelector('button:has-text("Apostar")', { timeout: 8000 });
+for (const p of [a, b, c]) if (p !== cur2) await clickIf(p, 'Paso, no apuesto');
 await cur2.click('button:has-text("Carrera de carretas")');
 await cur2.locator('button:has-text("🟢 3")').click();
 await click(cur2, 'Apostar');
 await cur2.waitForTimeout(2200);
 await cur2.screenshot({ path: `${OUT}/casino-carrera.png` });
 await cur2.waitForTimeout(3000);
-await click(cur2, 'Salir del Casino');
+await click(cur2, 'Listo, salgo del Casino');
 await cur2.waitForTimeout(500);
 await click(cur2, 'Terminar turno');
 
@@ -99,14 +111,15 @@ const third = await turnOf();
 const cur3 = pages[third.replace('Turno de ', '')];
 await dbg(cur3, { position: 36, dice: [1, 2] });
 await click(cur3, 'Tirar dados');
-await cur3.waitForSelector('text=Casino', { timeout: 8000 });
+await cur3.waitForSelector('button:has-text("Apostar")', { timeout: 8000 });
+for (const p of [a, b, c]) if (p !== cur3) await clickIf(p, 'Paso, no apuesto');
 await cur3.click('button:has-text("Doble o nada")');
 await dbg(cur3, { dice: [2, 4] }); // par → dobla
 await click(cur3, 'Arrancar con');
 await cur3.waitForTimeout(1300);
 await cur3.screenshot({ path: `${OUT}/casino-doble.png` });
 if (await cur3.locator('button:has-text("Retirar")').count()) await click(cur3, 'Retirar');
-await click(cur3, 'Salir del Casino');
+await click(cur3, 'Listo, salgo del Casino');
 await cur3.waitForTimeout(500);
 await click(cur3, 'Terminar turno');
 await waitTurnChange(third);

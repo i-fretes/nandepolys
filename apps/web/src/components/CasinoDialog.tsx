@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CARRETA_PAYOUT, DOUBLE_MAX_STEPS, QUINIELA_PAYOUT, RULETA_WIN_CHANCE } from '@nandepoly/engine';
 import { useMoving, useStore } from '../store';
+import { useReelSpin } from './reel';
 import { money } from '../format';
 import { sfx } from '../sound';
 import Modal from './Modal';
@@ -9,9 +10,9 @@ import { Die3D } from './Dice';
 type Game = 'ruleta' | 'quiniela' | 'doble' | 'carrera';
 const GAMES: { id: Game; name: string; icon: string; desc: string }[] = [
   { id: 'ruleta', name: 'Ruleta', icon: '🎡', desc: `${RULETA_WIN_CHANCE} % ganás lo apostado · ${100 - RULETA_WIN_CHANCE} % lo perdés (la banca tiene ventaja)` },
-  { id: 'quiniela', name: 'Quiniela', icon: '🎟️', desc: 'Elegí la suma de los dados. El 7 paga 5 veces, el 2 y el 12 pagan 30.' },
+  { id: 'quiniela', name: 'Quiniela', icon: '🎟️', desc: `Elegí la suma de los dados. El 7 paga ${QUINIELA_PAYOUT[7]} veces, el 2 y el 12 pagan ${QUINIELA_PAYOUT[2]}.` },
   { id: 'doble', name: 'Doble o nada', icon: '🪙', desc: 'Par dobla, impar perdés todo. Retirate cuando quieras, hasta 4 pasos (×16).' },
-  { id: 'carrera', name: 'Carrera de carretas', icon: '🛺', desc: 'Seis carretas, elegí una. Paga 5 a 1.' },
+  { id: 'carrera', name: 'Carrera de carretas', icon: '🛺', desc: `Seis carretas, elegí una. Paga ${CARRETA_PAYOUT} a 1.` },
 ];
 const CARTS = ['🔴', '🔵', '🟢', '🟡', '🟣', '🟠'];
 
@@ -23,8 +24,15 @@ export default function CasinoDialog() {
   const c = state.casino;
   const moving = useMoving();
   const open = state.turnPhase === 'CASINO' && !!c && !moving;
-  const mine = !!c && c.playerId === me;
-  const player = c ? state.players.find(p => p.id === c.playerId) : null;
+  // La mesa está abierta para todos: yo juego lo mío, y veo cómo van los demás
+  const atTable = !!c && !!me && c.players.includes(me);
+  const iPassed = !!c && !!me && !!c.passed[me];
+  const mine = atTable && !iPassed;
+  const iPlayed = !!c && !!me && !!c.played[me];
+  const myDouble = (c && me ? c.double[me] : null) ?? null;
+  const player = c && me && atTable ? state.players.find(p => p.id === me)! : c ? state.players.find(p => p.id === c.triggeredBy) : null;
+  const trigger = c ? state.players.find(p => p.id === c.triggeredBy) : null;
+  const mustBet = !!c && c.triggeredBy === me && (player?.cash ?? 0) >= 10;
   const [game, setGame] = useState<Game>('ruleta');
   const [amount, setAmount] = useState(50);
   const [pick, setPick] = useState(7);
@@ -40,7 +48,7 @@ export default function CasinoDialog() {
   }, [last?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open || !c || !player) return <Modal open={false} />;
-  const showResult = last && (last.data.game === game) && (c.played);
+  const showResult = last && (last.data.game === game) && iPlayed;
 
   async function play() {
     setBusy(true);
@@ -53,9 +61,12 @@ export default function CasinoDialog() {
     <Modal open width="max-w-2xl">
       <div className="-m-5 rounded-2xl bg-gradient-to-br from-[#2a0845] via-[#4a0d67] to-[#7a1b4d] p-5 text-white">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black tracking-wide">🎰 Casino</h2>
+          <div>
+            <h2 className="text-2xl font-black tracking-wide">🎰 Casino</h2>
+            <div className="text-xs opacity-80">Cayó {trigger?.name ?? ''} y abrió la mesa: juegan todos. {trigger?.name ?? ''} apuesta sí o sí; los demás pueden pasar.</div>
+          </div>
           <div className="text-right text-sm">
-            <div className="opacity-80">{mine ? 'Tu efectivo' : `Efectivo de ${player.name}`}</div>
+            <div className="opacity-80">{atTable ? 'Tu efectivo' : `Efectivo de ${player.name}`}</div>
             <div className="text-lg font-black text-yellow-300">{money(player.cash)}</div>
           </div>
         </div>
@@ -68,7 +79,7 @@ export default function CasinoDialog() {
         {/* Mesas */}
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {GAMES.map(g => (
-            <button key={g.id} disabled={c.played && !c.double && g.id !== game} onClick={() => setGame(g.id)}
+            <button key={g.id} disabled={iPlayed && !myDouble && g.id !== game} onClick={() => setGame(g.id)}
               className={`rounded-xl p-2 text-left transition ${game === g.id ? 'bg-yellow-400 text-black shadow-lg' : 'bg-white/10 hover:bg-white/20'} disabled:opacity-40`}>
               <div className="text-xl">{g.icon}</div>
               <div className="text-sm font-bold leading-tight">{g.name}</div>
@@ -80,15 +91,15 @@ export default function CasinoDialog() {
         {/* Mesa activa */}
         <div className="mt-3 rounded-2xl bg-black/30 p-3">
           {game === 'ruleta' && <Ruleta result={showResult ? last!.data : null} />}
-          {game === 'quiniela' && <Quiniela pick={pick} setPick={setPick} disabled={!mine || c.played} result={showResult ? last!.data : null} />}
-          {game === 'carrera' && <Carrera cart={cart} setCart={setCart} disabled={!mine || c.played} result={showResult ? last!.data : null} />}
-          {game === 'doble' && <Doble c={c} amount={amount} last={last?.data.game === 'doble' ? last.data : null} />}
+          {game === 'quiniela' && <Quiniela pick={pick} setPick={setPick} disabled={!mine || iPlayed} result={showResult ? last!.data : null} />}
+          {game === 'carrera' && <Carrera cart={cart} setCart={setCart} disabled={!mine || iPlayed} result={showResult ? last!.data : null} />}
+          {game === 'doble' && <Doble c={{ double: myDouble, played: iPlayed }} amount={amount} last={last?.data.game === 'doble' ? last.data : null} />}
         </div>
 
         {/* Apuesta */}
         {mine ? (
           <div className="mt-3 space-y-2">
-            {!c.played && (
+            {!iPlayed && (
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold">Apuesta:</span>
@@ -100,26 +111,42 @@ export default function CasinoDialog() {
                     onChange={e => setAmount(Math.max(10, Math.min(maxBet, Math.floor(Number(e.target.value) || 0))))} />
                 </div>
                 <div className="flex gap-2">
-                  <button className="btn-ghost flex-1" onClick={() => act({ type: 'CASINO_LEAVE' })}>Salir sin apostar</button>
+                  <button className="btn-ghost flex-1" disabled={mustBet} title={mustBet ? 'Caíste en el Casino: tenés que apostar al menos una vez' : ''} onClick={() => act({ type: 'CASINO_LEAVE' })}>
+                    {mustBet ? 'Caíste acá: tenés que apostar' : 'Paso, no apuesto'}
+                  </button>
                   <button className="btn flex-1 bg-yellow-400 text-black hover:bg-yellow-300" disabled={busy || amount < 10 || amount > maxBet} onClick={play}>
                     {game === 'doble' ? `Arrancar con ${money(amount)}` : `Apostar ${money(amount)}`}
                   </button>
                 </div>
               </>
             )}
-            {c.played && !c.double && (
-              <button className="btn w-full bg-yellow-400 text-black hover:bg-yellow-300" onClick={() => act({ type: 'CASINO_LEAVE' })}>Salir del Casino ➜</button>
+            {iPlayed && !myDouble && (
+              <button className="btn w-full bg-yellow-400 text-black hover:bg-yellow-300" onClick={() => act({ type: 'CASINO_LEAVE' })}>Listo, salgo del Casino ➜</button>
             )}
-            {c.double && (
+            {myDouble && (
               <div className="flex gap-2">
-                <button className="btn-green flex-1" onClick={() => act({ type: 'CASINO_CASHOUT' })}>Retirar {money(c.double.stake)} 💰</button>
-                <button className="btn-primary flex-1 breathe" onClick={() => act({ type: 'CASINO_DOUBLE_CONTINUE' })}>¡Una más! (×2 → {money(c.double.stake * 2)})</button>
+                <button className="btn-green flex-1" onClick={() => act({ type: 'CASINO_CASHOUT' })}>Retirar {money(myDouble.stake)} 💰</button>
+                <button className="btn-primary flex-1 breathe" onClick={() => act({ type: 'CASINO_DOUBLE_CONTINUE' })}>¡Una más! (×2 → {money(myDouble.stake * 2)})</button>
               </div>
             )}
           </div>
         ) : (
-          <p className="mt-3 text-center text-sm opacity-80">{player.name} está en el Casino…</p>
+          <p className="mt-3 text-center text-sm opacity-80">{iPassed ? 'Ya saliste de la mesa. Esperando a los demás…' : `${trigger?.name ?? ''} está en el Casino…`}</p>
         )}
+
+        {/* Quién va cómo en la mesa */}
+        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+          {c.players.map(id => {
+            const pl = state.players.find(x => x.id === id);
+            if (!pl) return null;
+            const estado = c.passed[id] ? (c.played[id] ? 'jugó' : 'pasó') : c.double[id] ? 'doblando' : c.played[id] ? 'viendo' : 'apostando…';
+            return (
+              <span key={id} className={`rounded-full px-2.5 py-1 text-xs font-bold ${c.passed[id] ? 'bg-white/10 opacity-60' : 'bg-white/25'}`} style={{ boxShadow: `inset 0 0 0 2px ${pl.color}` }}>
+                {pl.name}{id === c.triggeredBy ? ' 🎯' : ''} · {estado}
+              </span>
+            );
+          })}
+        </div>
       </div>
     </Modal>
   );
@@ -129,38 +156,41 @@ export default function CasinoDialog() {
 // Ruleta: carrete horizontal que frena despacio sobre el número que salió
 // ---------------------------------------------------------------------------------------
 function Ruleta({ result }: { result: Record<string, unknown> | null }) {
-  const CELL = 78; // 72 + gap 6
-  const cells = useMemo(() => Array.from({ length: 60 }, (_, i) => ((i * 37) % 100) + 1), []);
-  const [offset, setOffset] = useState(0);
+  const CELL = 78;   // 72 de celda + 6 de separación
+  const CELLS = 56;
+  const WIN = 44;    // celda donde frena el carrete
+  const SPIN_MS = 3600;
+  const roll = result && typeof result.roll === 'number' ? (result.roll as number) : null;
+  const win = !!result?.win;
+  const stripRef = useRef<HTMLDivElement>(null);
   const [done, setDone] = useState(false);
-  const ticks = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const winRef = useRef<HTMLDivElement>(null);
-  const roll = result ? (result.roll as number) : null;
+
+  // Números del carrete; el que salió va justo en la celda WIN, que es la que queda bajo el marcador
+  const cells = useMemo(() => {
+    const out = Array.from({ length: CELLS }, (_, i) => ((i * 37 + 23) % 100) + 1);
+    if (roll !== null) out[WIN] = roll;
+    return out;
+  }, [roll]);
+
+  useReelSpin(stripRef, roll !== null, { cell: CELL, winCell: WIN, ms: SPIN_MS, direction: 'left', jitterKey: roll ?? 0 });
 
   useEffect(() => {
-    if (roll === null) { setOffset(0); setDone(false); return; }
-    // Colocamos el número ganador en la celda 48 y desplazamos el carrete hasta que quede bajo el marcador
-    const windowW = winRef.current?.clientWidth ?? 560;
-    const target = 48 * CELL + CELL / 2 - windowW / 2;
+    if (roll === null) { setDone(false); return; }
     setDone(false);
-    setOffset(0);
-    requestAnimationFrame(() => setOffset(-target));
-    // Tics que se ralentizan
-    ticks.current.forEach(clearTimeout); ticks.current = [];
+    const ticks: ReturnType<typeof setTimeout>[] = [];
     let t = 0;
-    for (let i = 0; i < 40; i++) { t += 40 + i * i * 2.2; if (t < 3400) ticks.current.push(setTimeout(() => sfx.tick(), t)); }
-    ticks.current.push(setTimeout(() => { setDone(true); if (result?.win) sfx.bigWin(); else sfx.lose(); }, 3600));
-    return () => { ticks.current.forEach(clearTimeout); };
+    for (let i = 0; i < 40; i++) { t += 40 + i * i * 2.2; if (t < SPIN_MS - 200) ticks.push(setTimeout(() => sfx.tick(), t)); }
+    ticks.push(setTimeout(() => { setDone(true); if (win) sfx.bigWin(); else sfx.lose(); }, SPIN_MS + 100));
+    return () => ticks.forEach(clearTimeout);
   }, [roll]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const list = cells.map((n, i) => (i === 48 && roll !== null ? roll : n));
   return (
     <div>
-      <div ref={winRef} className="reel-window mx-auto" style={{ maxWidth: 560 }}>
+      <div className="reel-window mx-auto" style={{ maxWidth: 560 }}>
         <div className="reel-marker" />
-        <div className="reel-strip" style={{ transform: `translateX(${offset}px)`, transition: offset ? 'transform 3.6s cubic-bezier(.08,.6,.1,1)' : 'none' }}>
-          {list.map((n, i) => (
-            <div key={i} className={`reel-cell ${n <= RULETA_WIN_CHANCE ? 'win' : 'lose'}`}>
+        <div ref={stripRef} className="reel-strip">
+          {cells.map((n, i) => (
+            <div key={i} className={`reel-cell ${n <= RULETA_WIN_CHANCE ? 'win' : 'lose'} ${done && i === WIN ? 'hit' : ''}`} data-cell={i}>
               <div className="text-center">{n}<br /><small>{n <= RULETA_WIN_CHANCE ? 'GANÁS' : 'PERDÉS'}</small></div>
             </div>
           ))}
@@ -168,7 +198,7 @@ function Ruleta({ result }: { result: Record<string, unknown> | null }) {
       </div>
       <div className="mt-2 h-8 text-center text-lg font-black">
         {roll === null ? <span className="opacity-60">Del 1 al {RULETA_WIN_CHANCE} ganás · del {RULETA_WIN_CHANCE + 1} al 100 perdés</span>
-          : done ? <span className={`reveal inline-block ${result?.win ? 'text-green-300' : 'text-red-300'}`}>{result?.win ? `¡Salió ${roll}! Ganaste ${money(result!.amount as number)}` : `Salió ${roll}. Perdiste ${money(result!.amount as number)}`}</span>
+          : done ? <span data-ruleta-result={win ? 'win' : 'lose'} className={`reveal inline-block ${win ? 'text-green-300' : 'text-red-300'}`}>{win ? `¡Salió ${roll}! Ganaste ${money(result!.amount as number)}` : `Salió ${roll}. Perdiste ${money(result!.amount as number)}`}</span>
           : <span className="opacity-60">Girando…</span>}
       </div>
     </div>

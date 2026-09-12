@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SPEED_FACE_INFO } from '@nandepoly/engine';
 import { useStore } from '../store';
 
 const FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -32,8 +33,21 @@ export function Die3D({ value, rolling, size }: { value: number | null; rolling:
   );
 }
 
+/** Tercer dado ("ñandú"): caras +1/+2/+3, colectivo, feria y turbo. */
+export function NanduDie({ face, rolling, size }: { face: keyof typeof SPEED_FACE_INFO | null; rolling: boolean; size?: string }) {
+  const info = face ? SPEED_FACE_INFO[face] : null;
+  const style = { ['--d' as string]: size ?? '6cqw' } as React.CSSProperties;
+  return (
+    <div className={`nandu-die ${rolling ? 'rolling' : ''}`} style={style} title={info ? `${info.short}: ${info.desc}` : 'Dado ñandú'}>
+      <span className="nandu-face">{info ? info.icon : '?'}</span>
+    </div>
+  );
+}
+
 export default function Dice() {
   const dice = useStore(s => s.state?.dice ?? null);
+  const speedDie = useStore(s => s.state?.speedDie ?? null);
+  const speedOn = useStore(s => s.state?.settings.speedDie ?? false);
   const rollingUntil = useStore(s => s.rollingUntil);
   const [rolling, setRolling] = useState(false);
 
@@ -48,7 +62,8 @@ export default function Dice() {
   return (
     <>
       <Die3D value={dice?.[0] ?? null} rolling={rolling} />
-      <Die3D value={dice?.[1] ?? null} rolling={rolling} />
+      {dice?.[1] !== 0 && <Die3D value={dice?.[1] ?? null} rolling={rolling} />}
+      {speedOn && <NanduDie face={speedDie} rolling={rolling} />}
     </>
   );
 }

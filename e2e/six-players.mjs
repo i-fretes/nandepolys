@@ -29,7 +29,7 @@ const host = await newPage();
 pages.push(host);
 await host.goto(BASE);
 await host.fill('input[placeholder="Ej: Ivan"]', NAMES[0]);
-await host.click(`button[title="Mate y bombilla"]`);
+await host.click(`button[title="Guampa y bombilla"]`);
 await host.click('button:has-text("Crear sala")');
 await host.waitForURL(/\/sala\//);
 const code = host.url().split('/sala/')[1];
@@ -43,7 +43,7 @@ for (let i = 1; i < 6; i++) {
   await p.goto(`${BASE}/sala/${code}`);
   await p.waitForSelector('text=Entrar a la sala');
   await p.fill('input[maxlength="20"]', NAMES[i]);
-  await p.click(`button[title="${['Mate y bombilla', 'Chipa', 'Ñandutí', 'Carreta', 'Jaguareté', 'Arpa paraguaya'][i]}"]`);
+  await p.click(`button[title="${['Guampa y bombilla', 'Chipa', 'Ñandutí', 'Carreta', 'Jaguareté', 'Arpa paraguaya'][i]}"]`);
   await p.click('button:has-text("Entrar a la sala")');
   await p.waitForSelector(`text=${NAMES[i]}`);
   log('Entró', NAMES[i]);

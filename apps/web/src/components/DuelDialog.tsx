@@ -94,7 +94,7 @@ export default function DuelDialog() {
           <div className="text-2xl">🔫</div><b>Escopeta</b><div className="text-xs text-ink/60">Cartuchos de verdad y de fogueo mezclados. Disparate o dispará al rival. 3 vidas. Lupa, cerveza y esposas.</div>
         </button>
         <button onClick={() => setGame('truco')} className={`rounded-xl border-2 p-3 text-left ${game === 'truco' ? 'border-py-blue bg-blue-50' : 'border-black/10 bg-white'}`}>
-          <div className="text-2xl">🃏</div><b>Truco paraguayo</b><div className="text-xs text-ink/60">Mano a mano a 15: envido, real, falta, flor, truco, retruco y vale cuatro.</div>
+          <div className="text-2xl">🃏</div><b>Truco paraguayo</b><div className="text-xs text-ink/60">Mano a mano, 3 manos: envido, real, falta, flor, truco, retruco y vale cuatro.</div>
         </button>
       </div>
       <label className="mt-3 block text-sm font-semibold">Apuesta: <span className="text-emerald-700">{money(amount)}</span></label>
@@ -233,6 +233,14 @@ function Truco({ d, meId }: { d: DuelState; meId: string | null }) {
   const canTruco = playing && !pend && myTurn && !(pub.trucoLevel > 0 && pub.trucoCallerLast === meId) && pub.trucoLevel < 3;
   const trucoWord = ['¡Truco!', '¡Retruco!', '¡Vale cuatro!'][pub.trucoLevel] ?? '';
   const trucoWhat = ['truco', 'retruco', 'vale4'][pub.trucoLevel];
+  // Cuánto vale aceptar y cuánto regalás si no querés
+  const pendLevel = pend?.level ?? 0;
+  const trucoValue = pend ? pendLevel + 1 : pub.handValue;
+  const trucoRefuse = pend ? pendLevel : Math.max(1, pub.handValue - 1);
+  const envidoChain = pub.envidoChain;
+  const envidoWord = envidoChain[envidoChain.length - 1] === 'real' ? 'real envido' : envidoChain[envidoChain.length - 1] === 'falta' ? 'falta envido' : 'envido';
+  const envidoValue = envidoChain[envidoChain.length - 1] === 'falta' ? pub.target - Math.max(...Object.values(pub.scores)) : pub.envidoPoints + (envidoChain[envidoChain.length - 1] === 'real' ? 3 : 2);
+  const envidoRefuse = Math.max(1, pub.envidoPoints);
   const log = pub.log.slice(-4).map(l => ids.reduce((t, id) => t.split(id).join(name(id)), l));
   const shown = playing ? [meId!, oppId] : ids;
   return (
@@ -266,32 +274,47 @@ function Truco({ d, meId }: { d: DuelState; meId: string | null }) {
             : Array.from({ length: pub.cardCount[shown[0]] ?? 0 }, (_, i) => <CardView key={i} c={null} small />)}
         </div>
       </div>
+      {/* Canto pendiente: cartel grande para que no pase desapercibido */}
+      {pend && playing && (
+        <div className="truco-call">
+          <span className="tc-word">{pend.type === 'envido' ? envidoWord.toUpperCase() : trucoWord.replace(/[¡!]/g, '').toUpperCase()}</span>
+          <span className="tc-who">cantó {name(pend.by)}</span>
+        </div>
+      )}
+
       {/* Cantos */}
       {playing && !pub.finished && (
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           {mustAnswer ? (
             <>
-              <div className="w-full text-center text-sm font-bold text-yellow-300">{name(pend!.by)} cantó {pend!.type === 'envido' ? pub.envidoChain[pub.envidoChain.length - 1] : trucoWord.replace('!', '').replace('¡', '')}. ¿Querés?</div>
-              <button data-quiero className="duel-btn opp" onClick={() => call('quiero')}>¡Quiero!</button>
-              <button data-noquiero className="duel-btn self" onClick={() => call('no_quiero')}>No quiero</button>
+              <div className="w-full text-center text-sm font-bold text-yellow-300">¿Querés?</div>
+              <button data-quiero className="duel-btn quiero" onClick={() => call('quiero')}>
+                ¡Quiero!
+                <span className="duel-sub">{pend!.type === 'envido' ? `se juegan ${envidoValue} pts` : `la mano vale ${trucoValue}`}</span>
+              </button>
+              <button data-noquiero className="duel-btn noquiero" onClick={() => call('no_quiero')}>
+                No quiero
+                <span className="duel-sub">le das {pend!.type === 'envido' ? envidoRefuse : trucoRefuse} pt{(pend!.type === 'envido' ? envidoRefuse : trucoRefuse) === 1 ? '' : 's'}</span>
+              </button>
               {pend!.type === 'envido' && <>
-                {!pub.envidoChain.includes('real') && !pub.envidoChain.includes('falta') && <button className="btn-ghost btn-sm" onClick={() => call('real')}>Real envido</button>}
-                {!pub.envidoChain.includes('falta') && <button className="btn-ghost btn-sm" onClick={() => call('falta')}>Falta envido</button>}
+                {!pub.envidoChain.includes('real') && !pub.envidoChain.includes('falta') && <button className="btn-ghost btn-sm" onClick={() => call('real')}>Real envido <b className="ml-1">(3)</b></button>}
+                {!pub.envidoChain.includes('falta') && <button className="btn-ghost btn-sm" onClick={() => call('falta')}>Falta envido <b className="ml-1">(a {pub.target})</b></button>}
               </>}
             </>
           ) : (
             <>
-              {canEnvido && !pend && <button className="btn-ghost btn-sm" onClick={() => call('envido')}>Envido</button>}
-              {canEnvido && !pend && <button className="btn-ghost btn-sm" onClick={() => call('real')}>Real envido</button>}
-              {canEnvido && !pend && <button className="btn-ghost btn-sm" onClick={() => call('falta')}>Falta envido</button>}
-              {canTruco && <button data-truco className="btn-primary btn-sm" onClick={() => call(trucoWhat)}>{trucoWord}</button>}
-              <button className="btn-ghost btn-sm !text-red-700" onClick={() => confirm('¿Irte al mazo? El rival se lleva la mano.') && call('mazo')}>Al mazo</button>
+              {canEnvido && !pend && <button className="btn-ghost btn-sm" onClick={() => call('envido')}>Envido <b className="ml-1">(2)</b></button>}
+              {canEnvido && !pend && <button className="btn-ghost btn-sm" onClick={() => call('real')}>Real envido <b className="ml-1">(3)</b></button>}
+              {canEnvido && !pend && <button className="btn-ghost btn-sm" onClick={() => call('falta')}>Falta envido <b className="ml-1">(a {pub.target})</b></button>}
+              {canTruco && <button data-truco className="btn-primary btn-sm" onClick={() => call(trucoWhat)}>{trucoWord} <b className="ml-1">({pub.trucoLevel + 2})</b></button>}
               {myTurn && !pend && <span className="w-full text-center text-xs text-yellow-300">Te toca: jugá una carta o cantá.</span>}
               {!myTurn && <span className="w-full text-center text-xs text-white/60">Esperando a {name(pub.turn)}…</span>}
+              <button className="btn-ghost btn-sm !px-2 !text-[11px] !text-red-700 opacity-70" onClick={() => confirm('¿Irte al mazo? El rival se lleva la mano.') && call('mazo')}>Al mazo</button>
             </>
           )}
         </div>
       )}
+
       <div className="mt-2 space-y-0.5 text-[11px] text-white/60">{log.map((l, i) => <div key={i}>{l}</div>)}</div>
     </div>
   );

@@ -393,7 +393,10 @@ describe('cartas', () => {
     s = withTopCard(s, 'chance', 'S4');
     r = act(s, { type: 'ROLL', playerId: a });
     expect(r.state.players[0].position).toBe(13);
-    const d = r.state.dice!;
+    // La tirada del servicio va en rentDice: no pisa los dados del tablero (bug visual arreglado)
+    const d = r.state.rentDice!;
+    expect(d).not.toBeNull();
+    expect(r.state.dice).not.toEqual(d);
     expect(r.state.players[0].cash).toBe(1500 - (d[0] + d[1]) * 10);
   });
 });

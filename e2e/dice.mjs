@@ -3,6 +3,15 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const BASE = process.argv[2] ?? 'http://localhost:8080'; const OUT = process.argv[3] ?? 'e2e/dice'; mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined });
+
+// El dado ñandú se apaga en las pruebas: cambian las casillas donde se cae
+async function offNandu(page) {
+  const cb = page.locator('label', { hasText: 'Dado ñandú' }).locator('input[type=checkbox]');
+  if (await cb.count() && await cb.isChecked()) {
+    await cb.click();
+    await page.waitForFunction(el => !el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
+  }
+}
 const mk = async () => { const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage(); p.on('dialog', d => d.accept()); return p; };
 const dbg = (p, data) => p.evaluate(d => new Promise(res => window.__nandepoly.socket.emit('debug:set', d, res)), data);
 const esc = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -13,6 +22,7 @@ const code = a.url().split('/sala/')[1];
 await b.goto(`${BASE}/sala/${code}`); await b.waitForSelector('button:has-text("Entrar a la sala")'); await b.fill('input[maxlength="20"]', 'Lucía'); await b.click('button[title="Chipa"]'); await b.click('button:has-text("Entrar a la sala")');
 await a.waitForSelector('text=Jugadores (2/6)');
 for (const label of ['Casinos', 'Desafíos entre jugadores']) { const cb = a.locator('label', { hasText: label }).locator('input[type=checkbox]'); await cb.click(); await a.waitForFunction(el => el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 }); }
+await offNandu(a);
 await a.click('button:has-text("Empezar partida")'); await a.waitForSelector('.board');
 const s = await a.evaluate(() => window.__nandepoly.store.getState().state);
 const meA = await a.evaluate(() => window.__nandepoly.store.getState().playerId);
@@ -23,6 +33,7 @@ await click(cur, 'Tirar dados');
 await cur.waitForSelector('text=Casino', { timeout: 8000 });
 await cur.locator('button', { hasText: 'Quiniela' }).first().click({ force: true });
 await cur.waitForTimeout(300);
+await other.locator('button:has-text("Paso, no apuesto")').first().click({ force: true }).catch(() => {});
 await cur.locator('button', { hasText: /^7/ }).first().click({ force: true });
 await cur.locator('button:has-text("200 mil")').first().click({ force: true }).catch(() => {});
 await click(cur, 'Apostar');
@@ -30,7 +41,8 @@ await cur.waitForTimeout(350);
 await cur.screenshot({ path: `${OUT}/casino-dados-girando.png` });
 await cur.waitForTimeout(1500);
 await cur.screenshot({ path: `${OUT}/casino-dados-quietos.png` });
-await click(cur, 'Salir del Casino');
+await (await cur.locator('button:has-text("Paso, no apuesto")').count() ? Promise.resolve() : Promise.resolve());
+await click(cur, 'Listo, salgo del Casino');
 await cur.waitForTimeout(300);
 await (await cur.locator('button', { hasText: /Terminar turno/ }).count() ? click(cur, 'Terminar turno') : Promise.resolve());
 // Desafío de dados

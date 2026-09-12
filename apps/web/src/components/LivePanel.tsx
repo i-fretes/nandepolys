@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { EVENTS, tile, type TradeSide } from '@nandepoly/engine';
 import { useStore, type LiveEntry } from '../store';
-import { money, tokenEmoji } from '../format';
+import type { TokenId } from '@nandepoly/engine';
+import { money } from '../format';
+import { PlayerToken } from './Pieces';
 
 const KIND_META: Record<LiveEntry['kind'], { icon: string; label: string; cls: string }> = {
   trade_proposed: { icon: '🤝', label: 'Propuesta', cls: 'live-blue' },
@@ -80,7 +82,7 @@ function Who({ p }: { p?: { name: string; color: string; token: string } }) {
   if (!p) return <span>?</span>;
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="grid h-4 w-4 place-items-center rounded-full bg-white text-[10px]" style={{ boxShadow: `0 0 0 2px ${p.color}` }}>{tokenEmoji(p.token)}</span>
+      <span className="grid h-5 w-5 place-items-center rounded-full bg-white" style={{ boxShadow: `0 0 0 2px ${p.color}` }}><PlayerToken token={p.token as TokenId} color={p.color} size="13px" /></span>
       <span className="max-w-[72px] truncate">{p.name}</span>
     </span>
   );

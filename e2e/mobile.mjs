@@ -5,6 +5,15 @@ const BASE = process.argv[2] ?? 'http://localhost:8080';
 const OUT = process.argv[3] ?? 'e2e/mobile';
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined });
+
+// El dado ñandú se apaga en las pruebas: cambian las casillas donde se cae
+async function offNandu(page) {
+  const cb = page.locator('label', { hasText: 'Dado ñandú' }).locator('input[type=checkbox]');
+  if (await cb.count() && await cb.isChecked()) {
+    await cb.click();
+    await page.waitForFunction(el => !el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
+  }
+}
 const mk = async (mobile) => { const ctx = await browser.newContext(mobile ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage(); p.on('dialog', d => d.accept()); return p; };
 const dbg = (p, data) => p.evaluate(d => new Promise(res => window.__nandepoly.socket.emit('debug:set', d, res)), data);
 const a = await mk(true), b = await mk(false);
@@ -23,6 +32,7 @@ for (const label of ['La Arena', 'Caja sorpresa', 'Misiones secretas', 'Eventos 
   await a.waitForFunction(el => el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
 }
 await a.screenshot({ path: `${OUT}/lobby.png`, fullPage: true });
+await offNandu(a);
 await a.click('button:has-text("Empezar partida")');
 await a.waitForSelector('.board');
 await a.waitForTimeout(600);

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { BOARD, EVENTS, GROUP_COLORS, SIDE_LEN, isProperty, type Tile as TileT } from '@nandepoly/engine';
 import AnimatedNumber from './AnimatedNumber';
 import { useStore } from '../store';
-import { moneyShort, tokenEmoji } from '../format';
+import { moneyShort } from '../format';
 import Dice from './Dice';
+import { CardStack, House, Hotel, PlayerToken } from './Pieces';
 
 const N = SIDE_LEN + 1;            // casillas entre esquina y esquina (11): las esquinas son 0, 11, 22, 33
 const G = SIDE_LEN + 2;            // columnas/filas de la grilla (12)
@@ -29,8 +30,20 @@ export default function Board() {
   const setSelected = useStore(s => s.setSelectedTile);
   const displayPos = useStore(s => s.displayPos);
   const highlight = useStore(s => s.highlightGroup);
+  const me = useStore(s => s.playerId);
   const current = state.players[state.currentPlayerIndex];
   const glowGroup = highlight && highlight.until > Date.now() ? highlight.group : null;
+
+  // Intercambio en curso: verde lo que recibís, rojo lo que entregás
+  const tr = state.pendingTrade;
+  const gain = new Set<number>();
+  const lose = new Set<number>();
+  if (tr && me && (tr.fromId === me || tr.toId === me)) {
+    const mine = tr.fromId === me ? tr.receive : tr.give;      // lo que me llega
+    const theirs = tr.fromId === me ? tr.give : tr.receive;    // lo que entrego
+    for (const id of mine.properties) gain.add(id);
+    for (const id of theirs.properties) lose.add(id);
+  }
 
   return (
     <div className="board w-full">
@@ -43,27 +56,40 @@ export default function Board() {
         return (
           <div
             key={t.id}
-            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''} ${t.type === 'street' && t.group === glowGroup ? 'glow-group' : ''}`}
+            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''} ${t.type === 'street' && t.group === glowGroup ? 'glow-group' : ''} ${gain.has(t.id) ? 'trade-gain' : ''} ${lose.has(t.id) ? 'trade-lose' : ''}`}
             style={{ gridColumn: pos.col, gridRow: pos.row, ['--owner' as string]: owner?.color ?? 'transparent' }}
             onClick={() => setSelected(t.id)}
             title={t.name}
           >
             <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} active={t.type === 'casino' ? state.settings.casino : t.type === 'arena' ? state.settings.arena : true} />
-            {here.length > 0 && (
-              <div className="tokens">
-                {here.map(p => (
-                  <span key={p.id} className={`token ${p.id === current?.id ? 'current' : ''}`} style={{ ['--c' as string]: p.color }} title={p.name}>
-                    {tokenEmoji(p.token)}
-                  </span>
-                ))}
-              </div>
-            )}
+            {here.length > 0 && (() => {
+              // Con muchas fichas en la misma casilla se muestran 2 y un globito "+N": así nunca se pisan
+              const shown = here.length > 3 ? here.slice(0, 2) : here;
+              const extra = here.length - shown.length;
+              const quienes = here.map(p => p.name).join(', ');
+              return (
+                <div className={`tokens n${shown.length + (extra ? 1 : 0)}`} title={quienes}>
+                  {shown.map((p, i) => (
+                    <span key={p.id} className={`token ${p.id === current?.id ? 'current' : ''}`} style={{ zIndex: 3 + i }} title={p.name}>
+                      <PlayerToken token={p.token} color={p.color} title={p.name} />
+                    </span>
+                  ))}
+                  {extra > 0 && <span className="token more" style={{ zIndex: 9 }} title={quienes}>+{extra}</span>}
+                </div>
+              );
+            })()}
           </div>
         );
       })}
       <Center />
     </div>
   );
+}
+
+/** El nombre de la casilla, con la letra un poco más chica si es largo, para que entre entero. */
+function TileName({ name }: { name: string }) {
+  const cls = name.length > 17 ? 'name xlong' : name.length > 9 ? 'name long' : 'name';
+  return <div className={cls}>{name}</div>;
 }
 
 function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; corner: boolean; active?: boolean }) {
@@ -93,7 +119,7 @@ function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; 
     return (
       <div className="body">
         <div style={{ fontSize: '3.2cqw' }}>{ICONS[t.type]}</div>
-        <div className="name">{t.name}</div>
+        <TileName name={t.name} />
         {t.type === 'go' && <div className="price">Cobrá 200 mil</div>}
         {t.type === 'jail' && <div className="price">Solo de visita</div>}
       </div>
@@ -103,10 +129,10 @@ function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; 
     return (
       <>
         <div className="band" style={{ background: GROUP_COLORS[t.group] }}>
-          {houses === 5 ? <span className="hotel" /> : Array.from({ length: houses }).map((_, i) => <span key={i} className="house" />)}
+          {houses === 5 ? <Hotel /> : Array.from({ length: houses }).map((_, i) => <House key={i} />)}
         </div>
         <div className="body">
-          <div className="name">{t.name}</div>
+          <TileName name={t.name} />
           <div className="price">{moneyShort(t.price)}</div>
         </div>
       </>
@@ -119,15 +145,27 @@ function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; 
           <span style={{ fontSize: '1.8cqw' }}>{ICONS[t.type]}</span>
         </div>
         <div className="body">
-          <div className="name">{t.name}</div>
+          <TileName name={t.name} />
           <div className="price">{moneyShort(t.price)}</div>
+        </div>
+      </>
+    );
+  }
+  if (t.type === 'chance' || t.type === 'community') {
+    return (
+      <>
+        <div className="band cards" style={{ background: t.type === 'chance' ? '#FFE082' : '#B3E5FC' }}>
+          <CardStack kind={t.type} />
+        </div>
+        <div className="body">
+          <TileName name={t.name} />
         </div>
       </>
     );
   }
   return (
     <>
-      <div className="band" style={{ background: t.type === 'chance' ? '#FFE082' : t.type === 'community' ? '#B3E5FC' : '#ECEFF1' }}>
+      <div className="band" style={{ background: '#ECEFF1' }}>
         <span style={{ fontSize: '1.8cqw' }}>{ICONS[t.type]}</span>
       </div>
       <div className="body">
@@ -160,7 +198,7 @@ function Center() {
       </div>
       {state.phase === 'PLAYING' && current && (
         <div className="mt-[2.5cqw] flex items-center gap-[1cqw] rounded-full bg-white/80 px-[2cqw] py-[0.8cqw]" style={{ fontSize: '2cqw' }}>
-          <span className="token !static" style={{ ['--c' as string]: current.color, width: '3.2cqw', height: '3.2cqw', fontSize: '2cqw' }}>{tokenEmoji(current.token)}</span>
+          <PlayerToken token={current.token} color={current.color} size="3.4cqw" />
           <b>Turno de {current.name}</b>
           {secs !== null && <span className={`ml-[1cqw] font-mono ${secs <= 10 ? 'text-red-600' : 'text-ink/60'}`}>{secs}s</span>}
         </div>

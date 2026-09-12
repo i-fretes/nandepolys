@@ -4,7 +4,8 @@ import toast from 'react-hot-toast';
 import type { GameSettings } from '@nandepoly/engine';
 import { clearSession, emitAck } from '../socket';
 import { useStore } from '../store';
-import { money, tokenEmoji } from '../format';
+import { money } from '../format';
+import { PlayerToken } from '../components/Pieces';
 import RulesDialog from '../components/RulesDialog';
 
 export default function Lobby() {
@@ -73,7 +74,7 @@ export default function Lobby() {
           <ul className="mt-3 space-y-2">
             {state.players.map(p => (
               <li key={p.id} className="flex items-center gap-3 rounded-xl bg-cream px-3 py-2">
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-xl" style={{ boxShadow: `0 0 0 3px ${p.color}` }}>{tokenEmoji(p.token)}</span>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white" style={{ boxShadow: `0 0 0 3px ${p.color}` }}><PlayerToken token={p.token} color={p.color} size="26px" /></span>
                 <span className="font-semibold">{p.name}</span>
                 {p.id === state.hostId && <span className="chip bg-py-gold/20 text-yellow-800">Anfitrión</span>}
                 {p.isBot && <span className="chip bg-slate-200 text-slate-700">Bot</span>}
@@ -112,7 +113,7 @@ export default function Lobby() {
               </select>
             </Row>
             <div className="my-2 border-t border-black/10 pt-2 text-xs font-bold uppercase tracking-wide text-ink/50">🎰 Timba (opcional)</div>
-            <Toggle label="Casinos (dos casillas 🎰 a los lados del tablero: ruleta 49/51, quiniela, doble o nada, carrera de carretas)" checked={s.casino} disabled={!isHost} onChange={v => setSetting('casino', v)} />
+            <Toggle label="Casinos (dos casillas 🎰 a los lados del tablero). Cuando alguien cae se abre la mesa para todos: el que cayó apuesta sí o sí y los demás pueden pasar. Ruleta, quiniela, doble o nada y carrera de carretas; la banca siempre tiene ventaja." checked={s.casino} disabled={!isHost} onChange={v => setSetting('casino', v)} />
             {s.casino && (
               <Row label="Apuesta máxima en el Casino">
                 <select className="input !w-auto !py-1" disabled={!isHost} value={s.casinoMaxBet} onChange={e => setSetting('casinoMaxBet', Number(e.target.value))}>
@@ -123,7 +124,8 @@ export default function Lobby() {
             <Toggle label="Jackpot: lo perdido en el Casino se acumula y el doble seis se lo lleva" checked={s.jackpot} disabled={!isHost} onChange={v => setSetting('jackpot', v)} />
             <Toggle label="Alquiler a doble o nada: el dueño decide y se define en un mini-desafío (si ganás no pagás, si perdés pagás el doble)" checked={s.rentDoubleOrNothing} disabled={!isHost} onChange={v => setSetting('rentDoubleOrNothing', v)} />
             <Toggle label="Desafíos entre jugadores (dados, piedra-papel-tijera, trivia, tereré) + cartas ¡Desafío!" checked={s.challenges} disabled={!isHost} onChange={v => setSetting('challenges', v)} />
-            <Toggle label="Duelo mayor: cada 3 vueltas ganás una ficha para retar a alguien por hasta ₲ 500.000 a Escopeta o Truco a 2 manos (negarse cuesta ₲ 50.000)" checked={s.duels} disabled={!isHost} onChange={v => setSetting('duels', v)} />
+            <Toggle label="Duelo mayor: cada 3 vueltas ganás una ficha para retar a alguien por hasta ₲ 500.000 a Escopeta o Truco a 3 manos (negarse cuesta ₲ 50.000)" checked={s.duels} disabled={!isHost} onChange={v => setSetting('duels', v)} />
+            <Toggle label="Dado ñandú (tercer dado): además de los dos dados sale +1, +2, +3, 🚌 colectivo (seguís hasta la próxima Suerte o Cooperativa), 🎪 feria (seguís hasta el color menos pisado) o ⚡ turbo (movés el doble). Reparte mucho mejor el tablero." checked={s.speedDie} disabled={!isHost} onChange={v => setSetting('speedDie', v)} />
             <div className="my-2 border-t border-black/10 pt-2 text-xs font-bold uppercase tracking-wide text-ink/50">🏟️ Fiesta (opcional)</div>
             <Toggle label="La Arena (dos casillas 🏟️ arriba y abajo): al caer, TODOS juegan un mini-juego votado entre 3; el banco paga 300/150/50 mil y el que tiene menos efectivo cobra doble" checked={s.arena} disabled={!isHost} onChange={v => setSetting('arena', v)} />
             <Toggle label="Caja sorpresa al pasar por Salida (en vez de ₲ 200.000 fijos: carrete con premios, promedio ≈ 200.000)" checked={s.lootbox} disabled={!isHost} onChange={v => setSetting('lootbox', v)} />

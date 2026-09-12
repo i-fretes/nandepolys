@@ -592,9 +592,9 @@ describe('v1.3.5: contenido, casino y tiempos', () => {
   it('doble o nada del casino: el doble uno corta la racha', () => {
     let s = makeGame(2, { casino: true }, 3);
     const a = cur(s).id;
-    s = { ...s, turnPhase: 'CASINO', casino: { playerId: a, played: false, double: null } };
+    s = { ...s, turnPhase: 'CASINO', casino: { triggeredBy: a, players: s.players.map(p => p.id), played: {}, passed: {}, double: {} } };
     s = applyAction({ ...s, seed: seedFor([1, 1]) }, { type: 'CASINO_DOUBLE_START', playerId: a, amount: 100 }).state;
-    expect(s.casino!.double).toBeNull();                      // perdió con doble uno
+    expect(s.casino!.double[a]).toBeNull();                   // perdió con doble uno
     expect(s.players.find(p => p.id === a)!.cash).toBe(1400);
   });
 });

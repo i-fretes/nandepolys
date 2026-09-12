@@ -30,7 +30,7 @@ body {
 }
 .tile {
   position: relative;
-  background: #F7F1E1;
+  background: linear-gradient(160deg, #FBF6E8, #EFE7D2);
   border: 0.15cqw solid #2f3e2f;
   display: flex;
   flex-direction: column;
@@ -42,29 +42,60 @@ body {
 }
 .tile:hover { filter: brightness(1.05); }
 .tile.corner { font-size: 1.5cqw; align-items: center; justify-content: center; text-align: center; }
-.tile.corner .body { justify-content: flex-start; padding-top: 8%; gap: 0.4cqw; }
-.tile.corner .name { font-size: 1.25cqw; }
-.tile.corner .tokens { padding-bottom: 0.8cqw; }
-.tile .band { flex: 0 0 22%; display: flex; align-items: center; justify-content: center; gap: 2%; }
+.tile.corner .body { align-self: stretch; width: 100%; justify-content: flex-start; padding: 0.6cqw 0.25cqw 4.6cqw; gap: 0.3cqw; }
+.tile.corner .name { font-size: 1.02cqw; line-height: 1.2; }
+.tile .band { flex: 0 0 22%; display: flex; align-items: center; justify-content: center; gap: 2%; box-shadow: inset 0 -0.15cqw 0.25cqw rgba(0,0,0,.22); }
 .tile.side-bottom { flex-direction: column; }
 .tile.side-top { flex-direction: column-reverse; }
 .tile.side-left { flex-direction: row-reverse; }
 .tile.side-right { flex-direction: row; }
-.tile.side-left .band, .tile.side-right .band { flex-direction: column; }
-.tile .body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 4% 3%; text-align: center; min-width: 0; }
-.tile .name { font-weight: 700; font-size: 0.95cqw; letter-spacing: -0.01em; overflow-wrap: normal; word-break: normal; hyphens: manual; }
-.tile .price { font-weight: 600; opacity: .8; }
+.tile.side-left .band, .tile.side-right .band { flex-direction: column; box-shadow: inset -0.15cqw 0 0.25cqw rgba(0,0,0,.22); }
+.tile.side-right .band { box-shadow: inset 0.15cqw 0 0.25cqw rgba(0,0,0,.22); }
+.tile .band.cards { padding: 3%; }
+.tile .body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25cqw; padding: 4% 3%; text-align: center; min-width: 0; }
+/* Se reserva el borde de afuera de cada casilla para las fichas: así nunca tapan el nombre.
+   Va en cqw (medida del tablero) para que la reserva coincida exactamente con el alto de la ficha. */
+.tile.side-bottom:not(.corner) .body { padding-bottom: 4.7cqw; }
+.tile.side-top:not(.corner) .body { padding-top: 4.7cqw; }
+.tile.side-left:not(.corner) .body { padding-left: 3.6cqw; }
+.tile.side-right:not(.corner) .body { padding-right: 3.6cqw; }
+.tile .name.long { font-size: 0.82cqw; }
+.tile .name.xlong { font-size: 0.74cqw; letter-spacing: -0.03em; }
+.tile.corner .name.long { font-size: 0.95cqw; }
+.tile.corner .name.xlong { font-size: 0.88cqw; }
+.tile .name { font-weight: 700; font-size: 0.92cqw; letter-spacing: -0.015em; overflow-wrap: normal; word-break: normal; hyphens: manual; }
+.tile .price { font-weight: 600; font-size: 0.85cqw; opacity: .75; }
 .tile.owned { box-shadow: inset 0 0 0 0.35cqw var(--owner); }
 .tile.mortgaged .body { opacity: .45; background: repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,.08) 6px 12px); }
-.house { width: 1.4cqw; height: 1.4cqw; background: #2E8B57; border-radius: 15%; box-shadow: 0 0 0 0.12cqw #1a4d33; }
-.hotel { width: 2.2cqw; height: 1.4cqw; background: #C62828; border-radius: 15%; box-shadow: 0 0 0 0.12cqw #7a1010; }
-.tokens { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 0.2cqw; padding: 0.4cqw; pointer-events: none; }
-.token {
-  width: 2.8cqw; height: 2.8cqw; border-radius: 50%; display: grid; place-items: center;
-  font-size: 1.9cqw; background: white; border: 0.3cqw solid var(--c);
-  box-shadow: 0 0.3cqw 0.6cqw rgba(0,0,0,.35);
-}
-.token.current { animation: bounce 1.2s ease-in-out infinite; }
+
+/* Casas, hoteles y mazos dibujados */
+.piece-house { width: 1.75cqw; height: 1.6cqw; }
+.piece-hotel { width: 3.2cqw; height: 2cqw; }
+.tile.side-left .piece-house, .tile.side-right .piece-house { width: 1.6cqw; height: 1.5cqw; }
+.tile.side-left .piece-hotel, .tile.side-right .piece-hotel { width: 2.9cqw; height: 1.85cqw; }
+.piece-cards { width: 100%; height: 100%; max-height: 3cqw; }
+.tile.corner .piece-cards { max-height: 5cqw; }
+
+/* Fichas de los jugadores: figuras paraguayas con relieve, apoyadas en el borde de afuera */
+.tokens { position: absolute; display: flex; align-items: flex-end; justify-content: center; pointer-events: none; z-index: 3; }
+.tile.side-bottom .tokens { left: 0.1cqw; right: 0.1cqw; bottom: 0.15cqw; height: 4.5cqw; }
+.tile.side-top .tokens { left: 0.1cqw; right: 0.1cqw; top: 0.15cqw; height: 4.5cqw; align-items: flex-start; }
+.tile.side-left .tokens { top: 0.1cqw; bottom: 0.1cqw; left: 0.1cqw; width: 3.4cqw; }
+.tile.side-right .tokens { top: 0.1cqw; bottom: 0.1cqw; right: 0.1cqw; width: 3.4cqw; }
+.tile.corner .tokens { left: 0.3cqw; right: 0.3cqw; bottom: 0.2cqw; height: 4.4cqw; }
+.token { display: block; position: relative; }
+.piece-token { width: 100%; height: 100%; display: block; overflow: visible; }
+.tokens .token { width: 3.6cqw; height: 4.3cqw; }
+.tokens.n2 .token { width: 3.3cqw; height: 3.95cqw; margin: 0 -0.25cqw; }
+.tokens.n3 .token { width: 2.8cqw; height: 3.35cqw; margin: 0 -0.6cqw; }
+.tile.side-left .tokens .token, .tile.side-right .tokens .token { width: 3.2cqw; height: 3.8cqw; margin: 0; }
+.tile.side-left .tokens.n2 .token, .tile.side-right .tokens.n2 .token { width: 3cqw; height: 3.6cqw; margin: -0.25cqw 0; }
+.tile.side-left .tokens.n3 .token, .tile.side-right .tokens.n3 .token { width: 2.6cqw; height: 3.1cqw; margin: -0.5cqw 0; }
+/* Globito "+N" cuando hay más de tres fichas juntas */
+.token.more { display: grid; place-items: center; border-radius: 999px; background: #1F2A37; color: #fff;
+  font-weight: 900; font-size: 1.2cqw; line-height: 1; box-shadow: 0 0 0 0.22cqw #fff, 0 0.25cqw 0.4cqw rgba(0,0,0,.4);
+  width: 2.4cqw !important; height: 2.4cqw !important; align-self: center; }
+.token.current { animation: bounce 1.2s ease-in-out infinite; filter: drop-shadow(0 0 0.5cqw rgba(255,255,255,.95)); }
 @keyframes bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-12%) } }
 .center {
   grid-column: 2 / 12; grid-row: 2 / 12;
@@ -115,6 +146,7 @@ body {
   position: fixed; transform: translate(-50%, -50%); font-weight: 900; font-size: 22px; white-space: nowrap;
   text-shadow: 0 2px 0 rgba(0,0,0,.15), 0 0 12px rgba(255,255,255,.9); animation: floatUp 1.5s ease-out forwards;
 }
+.float.react { font-size: 40px; text-shadow: 0 3px 8px rgba(0,0,0,.35); }
 .float.good { color: #15803d; } .float.bad { color: #b91c1c; } .float.neutral { color: #1F2A37; }
 @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
 
@@ -157,8 +189,13 @@ body {
 
 /* Grupo completado */
 .tile.glow-group { animation: tileGlow .5s ease-in-out 5 alternate; z-index: 2; }
+/* Intercambio en curso: verde lo que recibís, rojo lo que entregás */
+.tile.trade-gain { z-index: 4; box-shadow: inset 0 0 0 0.5cqw #16a34a, 0 0 1.4cqw rgba(22,163,74,.85); animation: tradePulseGain 1.1s ease-in-out infinite alternate; }
+.tile.trade-lose { z-index: 4; box-shadow: inset 0 0 0 0.5cqw #dc2626, 0 0 1.4cqw rgba(220,38,38,.85); animation: tradePulseLose 1.1s ease-in-out infinite alternate; }
+@keyframes tradePulseGain { from { filter: brightness(1) } to { filter: brightness(1.18) saturate(1.2) } }
+@keyframes tradePulseLose { from { filter: brightness(1) } to { filter: brightness(1.18) saturate(1.2) } }
 @keyframes tileGlow { from { box-shadow: inset 0 0 0 0.35cqw var(--owner), 0 0 0 0 gold } to { box-shadow: inset 0 0 0 0.35cqw var(--owner), 0 0 2cqw 0.6cqw gold } }
-.house, .hotel { animation: drop .45s cubic-bezier(.3,1.6,.5,1); }
+.piece-house, .piece-hotel { animation: drop .45s cubic-bezier(.3,1.6,.5,1); }
 @keyframes drop { from { transform: translateY(-150%) scale(1.4); opacity: 0 } to { transform: none; opacity: 1 } }
 
 /* Dados 3D (tamaño en --d para que funcione tanto en el tablero como dentro de diálogos) */
@@ -177,6 +214,30 @@ body {
 @keyframes dieHop { 0% { transform: translateY(0) } 30% { transform: translateY(-35%) } 60% { transform: translateY(-12%) } 100% { transform: translateY(0) } }
 @keyframes tumble { 0% { transform: rotateX(0) rotateY(0) } 30% { transform: rotateX(200deg) rotateY(160deg) rotateZ(40deg) } 60% { transform: rotateX(380deg) rotateY(320deg) rotateZ(-20deg) } 100% { transform: rotateX(360deg) rotateY(360deg) } }
 
+.reaction { font-size: 21px; line-height: 1; padding: 4px 5px; border-radius: 10px; transition: transform .12s, background .12s; }
+.reaction:hover { transform: scale(1.25); background: rgba(0,0,0,.06); }
+.reaction:active { transform: scale(.95); }
+.board-focus .side-panel { display: none; }
+
+/* Título de propiedad en chico, dentro del panel de jugadores */
+.mini-deed { width: 4.4rem; border-radius: .5rem; overflow: hidden; background: #fff; border: 1px solid rgba(0,0,0,.15);
+  box-shadow: 0 1px 2px rgba(0,0,0,.12); text-align: center; transition: transform .12s, box-shadow .12s; }
+.mini-deed:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,.2); }
+.mini-deed.mortgaged { opacity: .5; background: repeating-linear-gradient(45deg, #fff 0 4px, #e5e7eb 4px 8px); }
+.md-band { display: flex; align-items: center; justify-content: center; gap: 1px; height: 12px; box-shadow: inset 0 -2px 3px rgba(0,0,0,.25); }
+.md-house { width: 5px; height: 5px; border-radius: 1px; background: linear-gradient(150deg,#ff7a6b,#a11d16); box-shadow: 0 0 0 .5px rgba(0,0,0,.4); }
+.md-hotel { width: 13px; height: 6px; border-radius: 1px; background: linear-gradient(150deg,#c0392b,#5d0b0b); box-shadow: 0 0 0 .5px rgba(0,0,0,.5); }
+.md-name { display: block; font-size: 8.5px; font-weight: 800; line-height: 1.1; padding: 2px 2px 0; height: 20px; overflow: hidden; }
+.md-rent { display: block; font-size: 8px; font-weight: 700; color: #15803d; padding: 0 2px 2px; }
+
+/* Tercer dado ("ñandú"): reparte mejor el tablero */
+.nandu-die { --d: 6cqw; width: var(--d); height: var(--d); border-radius: 18%; display: grid; place-items: center;
+  background: linear-gradient(145deg, #F7941D, #d97706); color: #fff; font-weight: 900;
+  box-shadow: inset 0 0 0 calc(var(--d) * .03) rgba(255,255,255,.45), 0 calc(var(--d) * .06) calc(var(--d) * .12) rgba(0,0,0,.25); }
+.nandu-face { font-size: calc(var(--d) * .5); line-height: 1; letter-spacing: -.03em; }
+.nandu-die.rolling { animation: nanduShake .9s ease-out; }
+@keyframes nanduShake { 0% { transform: translateY(0) rotate(0) } 25% { transform: translateY(-35%) rotate(-18deg) } 55% { transform: translateY(-10%) rotate(14deg) } 80% { transform: translateY(-4%) rotate(-6deg) } 100% { transform: translateY(0) rotate(0) } }
+
 /* Carta que se da vuelta */
 .flip-scene { perspective: 1200px; }
 .flip { transform-style: preserve-3d; animation: flipIn .8s cubic-bezier(.2,.8,.3,1); }
@@ -192,6 +253,8 @@ body {
 .reel-cell { flex: 0 0 72px; height: 76px; border-radius: 10px; display: grid; place-items: center; font-weight: 900; font-size: 20px; color: white; }
 .reel-cell.win { background: linear-gradient(180deg, #22c55e, #15803d); } .reel-cell.lose { background: linear-gradient(180deg, #ef4444, #991b1b); }
 .reel-cell small { font-size: 10px; opacity: .85; font-weight: 700; }
+.reel-cell.hit { outline: 3px solid #FFD700; outline-offset: -3px; animation: reelHit .5s ease-out 2; }
+@keyframes reelHit { 0%, 100% { filter: brightness(1) } 50% { filter: brightness(1.55) } }
 
 /* Carrera */
 .race-lane { position: relative; height: 34px; background: repeating-linear-gradient(90deg, #d6c9a8 0 20px, #cbbd98 20px 40px); border-radius: 8px; overflow: hidden; }
@@ -326,6 +389,14 @@ body {
 .shell { display: inline-block; font-size: 18px; filter: hue-rotate(0deg) saturate(0); opacity: .9; }
 .duel-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 16px; padding: 14px 10px; font-weight: 900; font-size: 16px; color: white; transition: transform .1s; }
 .duel-btn:hover { transform: translateY(-2px); } .duel-btn.self { background: linear-gradient(180deg, #3b82f6, #1e40af); } .duel-btn.opp { background: linear-gradient(180deg, #ef4444, #991b1b); }
+/* Truco: verde es "quiero", rojo es "no quiero" */
+.duel-btn.quiero { background: linear-gradient(180deg, #22c55e, #15803d); min-width: 150px; }
+.duel-btn.noquiero { background: linear-gradient(180deg, #ef4444, #991b1b); min-width: 150px; }
+.duel-sub { font-size: 11px; font-weight: 700; opacity: .9; }
+.truco-call { margin-top: 10px; display: flex; flex-direction: column; align-items: center; animation: callIn .45s cubic-bezier(.2,1.6,.4,1); }
+.tc-word { font-size: 34px; font-weight: 900; letter-spacing: -.02em; color: #fde047; text-shadow: 0 3px 0 #7c2d12, 0 0 22px rgba(253,224,71,.6); }
+.tc-who { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.75); }
+@keyframes callIn { 0% { transform: scale(.4) rotate(-8deg); opacity: 0 } 60% { transform: scale(1.12) rotate(2deg); opacity: 1 } 100% { transform: scale(1) rotate(0) } }
 .duel-face { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; background: white; }
 .duel-face.win { box-shadow: 0 0 0 5px #facc15, 0 0 30px #facc15; animation: breathe 1.2s infinite; } .duel-face.lose { filter: grayscale(1); opacity: .6; }
 .duel-token { background: #facc15; color: #1F2A37; border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 800; animation: breathe 1.6s infinite; }

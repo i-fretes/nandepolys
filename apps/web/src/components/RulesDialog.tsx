@@ -12,6 +12,14 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
     body: <p>Tocá <b>Tirar dados</b> y tu ficha avanza. Resolvés la casilla (comprar, pagar alquiler, carta, impuesto). Si sacaste <b>dobles</b>, volvés a tirar; con <b>tres dobles seguidos</b> vas preso. Cuando terminás, <b>Terminar turno</b>. Cada vez que pasás por Salida cobrás ₲ 200.000.</p>,
   },
   {
+    title: 'Dado ñandú (tercer dado)', icon: '🪶',
+    body: <p>Con la opción activada tirás <b>tres dados</b>: los dos de siempre (los dobles y el jackpot se siguen mirando solo en esos dos) y el <b>dado ñandú</b> naranja. Sus caras: <b>+1</b>, <b>+2</b> y <b>+3</b> avanzan esas casillas de más; <b>🚌 colectivo</b> te lleva, después de mover, hasta la próxima <b>Suerte o Cooperativa</b>; <b>🎪 feria</b> te lleva hasta la propiedad más cercana del <b>color menos pisado de la partida</b>; y <b>⚡ turbo</b> te hace avanzar <b>el doble</b> de lo que marcaron los dados. Está para que el tablero se reparta: con dos dados solos la suma se amontona en 7 y en una partida corta casi siempre queda algún color sin pisar (en nuestras simulaciones pasaba en la mitad de las partidas; con el ñandú baja a ~3 %). Si estás preso el dado ñandú no cuenta: para salir solo valen los dobles.</p>,
+  },
+  {
+    title: 'Intercambios y el metiche', icon: '🕵️',
+    body: <p>Podés proponer intercambios en cualquier momento: propiedades, efectivo y cartas de Tacumbú. Mientras una propuesta espera respuesta, en el tablero se marca en <b className="text-emerald-700">verde lo que recibís</b> y en <b className="text-red-700">rojo lo que entregás</b>. Y acá está lo bueno: cualquier otro jugador puede <b>meterse de metiche</b> — paga ₲ 100.000 al banco y ofrece lo suyo <b>por lo mismo</b> que pedía el primero. El que propuso puede <b>mejorar su oferta una sola vez</b>, y el dueño elige con quién cierra (o rechaza todo). Las propiedades con edificios en su grupo no se pueden intercambiar: vendé las casas primero.</p>,
+  },
+  {
     title: 'Comprar y subastar', icon: '🏷️',
     body: <p>Si caés en una propiedad libre, podés comprarla al precio de la casilla. Si no la comprás, <b>se subasta</b> entre todos (vos incluido): la oferta mínima es ₲ 10.000 y gana la más alta cuando los demás se retiran. Hay 20 segundos entre ofertas para que nadie trabe la partida.</p>,
   },
@@ -51,7 +59,7 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
   },
   {
     title: 'Casino (dos casillas) y Jackpot', icon: '🎰',
-    body: <p>Con la opción activada, las dos casillas 🎰 (a los lados del tablero) son <b>Casinos</b>. Sin la opción son casillas de descanso. Al caer podés apostar una vez (o irte sin apostar): <b>Ruleta</b> (43 % ganás lo apostado), <b>Quiniela</b> (elegís la suma de los dados: el 7 paga 4 veces, el 2 y el 12 pagan 25), <b>Doble o nada</b> (par dobla, impar o doble uno perdés todo; retirate cuando quieras, hasta 4 pasos), <b>Carrera de carretas</b> (seis carretas, paga 4 a 1). <b>Ojo: la banca tiene ventaja en las cuatro mesas</b>, así que a la larga el Casino gana; jugá poco y retirate a tiempo. Con el <b>Jackpot</b> activo, todo lo que se pierde se acumula y se lo lleva quien saque doble seis en su tirada normal.</p>,
+    body: <p>Con la opción activada, las dos casillas 🎰 (a los lados del tablero) son <b>Casinos</b>. Sin la opción son casillas de descanso. Cuando alguien cae, <b>se abre la mesa para todos</b>: el que cayó <b>tiene que apostar sí o sí</b> y los demás pueden apostar o tocar <b>Paso</b>. Cada uno juega una vez y elige su mesa: <b>Ruleta</b> (43 % ganás lo apostado), <b>Quiniela</b> (elegís la suma de los dados: el 7 paga 4 veces, el 2 y el 12 pagan 25), <b>Doble o nada</b> (par dobla, impar o doble uno perdés todo; retirate cuando quieras, hasta 4 pasos), <b>Carrera de carretas</b> (seis carretas, paga 4 a 1). <b>Ojo: la banca tiene ventaja en las cuatro mesas</b>, así que a la larga el Casino gana; jugá poco y retirate a tiempo. Con el <b>Jackpot</b> activo, todo lo que se pierde se acumula y se lo lleva quien saque doble seis en su tirada normal.</p>,
   },
   {
     title: 'Doble o nada en alquileres', icon: '🎲',
@@ -105,7 +113,7 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
       <div className="space-y-2">
         <p>Cada <b>3 vueltas</b> completas ganás una <b>ficha</b> 🔫. En tu turno la gastás para retar a alguien por <b>hasta ₲ 500.000</b>. Si el rival se niega, te paga ₲ 50.000 y conservás la ficha. El anfitrión puede anular un duelo trabado.</p>
         <p><b>Escopeta</b>: se cargan de 1 a 4 cartuchos de verdad y de 1 a 4 de fogueo, mezclados; se anuncia cuántos hay de cada uno. Por turnos elegís <b>dispararte</b> (si sale de fogueo, seguís vos) o <b>disparar al rival</b> (pasa el turno). 3 vidas cada uno. Ítems: 🔍 <b>lupa</b> (mirás el próximo cartucho), 🍺 <b>cerveza</b> (lo expulsás) y ⛓️ <b>esposas</b> (el rival pierde el turno). Cuando se vacía, se recarga.</p>
-        <p><b>Truco paraguayo</b> mano a mano, <b>a 2 manos</b> (gana el que suma más puntos; si empatan, una mano más; a 15 termina antes): envido (2), envido + envido (4), real envido (3), falta envido (lo que le falta al que va ganando), <b>flor</b> (3 cartas del mismo palo: 3 puntos automáticos), truco (2), retruco (3) y vale cuatro (4). El 1 de espada manda; después 1 de basto, 7 de espada, 7 de oro, los 3, los 2, los 1 falsos, 12, 11, 10, 7 falsos, 6, 5 y 4. Solo vos ves tu mano.</p>
+        <p><b>Truco paraguayo</b> mano a mano, <b>a 3 manos</b> (gana el que suma más puntos; si empatan, una mano más; a 15 termina antes): envido (2), envido + envido (4), real envido (3), falta envido (lo que le falta al que va ganando), <b>flor</b> (3 cartas del mismo palo: 3 puntos automáticos), truco (2), retruco (3) y vale cuatro (4). El 1 de espada manda; después 1 de basto, 7 de espada, 7 de oro, los 3, los 2, los 1 falsos, 12, 11, 10, 7 falsos, 6, 5 y 4. Solo vos ves tu mano.</p>
       </div>
     ),
   },

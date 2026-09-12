@@ -10,7 +10,7 @@ import {
   MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, rollDice, toClientState,
   updateSettings, type Action, type GameEvent, type GameState, type TokenId, type TurnPhase,
 } from '@nandepoly/engine';
-import { ActionSchema, ChatSchema, CreateRoomSchema, DraftingSchema, JoinRoomSchema, RejoinSchema, SettingsSchema, StrokeSchema } from './protocol';
+import { ActionSchema, ChatSchema, CreateRoomSchema, DraftingSchema, JoinRoomSchema, ReactSchema, RejoinSchema, SettingsSchema, StrokeSchema } from './protocol';
 import { RoomManager, type Room } from './rooms';
 import { botAction } from './bots';
 import { DICT_SIZE, isValidWord } from './dictionary';
@@ -65,6 +65,7 @@ const io = new IOServer(app.server, { cors: { origin: true }, pingInterval: 1000
 
 interface Session { roomCode: string; playerId: string | null; playerToken: string; name: string }
 const sessions = new Map<string, Session>(); // socket.id → sesión
+const reactAt = new Map<string, number>();      // playerId → última reacción (para no inundar)
 const timers = new Map<string, { turn?: NodeJS.Timeout; auction?: NodeJS.Timeout; bot?: NodeJS.Timeout; limit?: NodeJS.Timeout; phase?: NodeJS.Timeout; go?: NodeJS.Timeout; tick?: NodeJS.Timeout }>();
 const ARENA_VOTE_SECONDS = Number(process.env.ARENA_VOTE_SECONDS ?? 8);
 const ARENA_RESULT_SECONDS = Number(process.env.ARENA_RESULT_SECONDS ?? 7);
@@ -227,7 +228,7 @@ function afterStateChange(room: Room, before: GameState) {
       if (!o.proposed) arm(RENT_OFFER_SECONDS, { type: 'RENT_PAY', playerId: o.payerId }, 'Se pagó el alquiler por tiempo.');
       else arm(RENT_OFFER_SECONDS, { type: 'RENT_DON_REJECT', playerId: o.ownerId }, 'El dueño no respondió: se cobra el alquiler normal.');
     } else if (s.turnPhase === 'CASINO' && s.casino) {
-      arm(CASINO_IDLE_SECONDS, { type: 'CASINO_LEAVE', playerId: s.casino.playerId }, 'El Casino cerró por inactividad.');
+      arm(CASINO_IDLE_SECONDS, { type: 'FORCE_END_TURN', playerId: 'server' }, 'El Casino cerró: se acabó el tiempo de la mesa.');
     } else if (s.turnPhase === 'ARENA' && s.arena) {
       const a = s.arena;
       if (a.stage === 'vote') {
@@ -462,6 +463,20 @@ io.on('connection', (socket: Socket) => {
   });
 
   // Presencia de negociación: "X está negociando con Y" en la tabla en vivo
+  // Reacciones rápidas: reemplazan al chat. Solo un emoji de la lista, y como mucho uno por segundo.
+  socket.on('react', (raw) => {
+    try {
+      const sess = sessions.get(socket.id);
+      const room = sess && rooms.get(sess.roomCode);
+      if (!room || !sess?.playerId) return;
+      const { emoji } = ReactSchema.parse(raw);
+      const last = reactAt.get(sess.playerId) ?? 0;
+      if (Date.now() - last < 900) return;
+      reactAt.set(sess.playerId, Date.now());
+      io.to(room.code).emit('react', { playerId: sess.playerId, emoji, at: Date.now() });
+    } catch { /* ignorar */ }
+  });
+
   socket.on('trade:drafting', (raw) => {
     try {
       const sess = sessions.get(socket.id);

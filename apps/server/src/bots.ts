@@ -172,17 +172,27 @@ export function botAction(s: GameState): Action | null {
   // Casino
   if (s.turnPhase === 'CASINO' && s.casino) {
     const c = s.casino;
-    const bp = s.players.find(x => x.id === c.playerId)!;
-    if (!bp.isBot) return null;
-    if (c.double) return c.double.step >= 2 ? { type: 'CASINO_CASHOUT', playerId: bp.id } : { type: 'CASINO_DOUBLE_CONTINUE', playerId: bp.id };
-    if (c.played) return { type: 'CASINO_LEAVE', playerId: bp.id };
-    const amount = Math.min(s.settings.casinoMaxBet, Math.max(10, Math.floor(bp.cash * 0.05 / 10) * 10));
-    if (bp.cash < 200) return { type: 'CASINO_LEAVE', playerId: bp.id };
-    const pickGame = (bp.cash + s.turnNumber) % 4;
-    if (pickGame === 0) return { type: 'CASINO_PLAY', playerId: bp.id, game: 'ruleta', amount };
-    if (pickGame === 1) return { type: 'CASINO_PLAY', playerId: bp.id, game: 'quiniela', amount, pick: 7 };
-    if (pickGame === 2) return { type: 'CASINO_PLAY', playerId: bp.id, game: 'carrera', amount, pick: s.turnNumber % 6 };
-    return { type: 'CASINO_DOUBLE_START', playerId: bp.id, amount };
+    // La mesa está abierta para todos: cada bot resuelve lo suyo
+    for (const id of c.players) {
+      if (c.passed[id]) continue;
+      const bp = s.players.find(x => x.id === id);
+      if (!bp || !bp.isBot || bp.bankrupt) continue;
+      const d = c.double[id];
+      if (d) return d.step >= 2 ? { type: 'CASINO_CASHOUT', playerId: id } : { type: 'CASINO_DOUBLE_CONTINUE', playerId: id };
+      if (c.played[id]) return { type: 'CASINO_LEAVE', playerId: id };
+      const amount = Math.min(s.settings.casinoMaxBet, Math.max(10, Math.floor(bp.cash * 0.05 / 10) * 10));
+      // Los que no cayeron son prudentes: apuestan solo si están cómodos de plata
+      const obligado = id === c.triggeredBy;
+      if (bp.cash < 10) return { type: 'CASINO_LEAVE', playerId: id };
+      if (!obligado && (bp.cash < 400 || hash(s, c.players.indexOf(id) + 7) % 3 !== 0)) return { type: 'CASINO_LEAVE', playerId: id };
+      if (obligado && bp.cash < 200) return { type: 'CASINO_PLAY', playerId: id, game: 'ruleta', amount: Math.max(10, Math.min(amount, bp.cash)) };
+      const pickGame = (bp.cash + s.turnNumber) % 4;
+      if (pickGame === 0) return { type: 'CASINO_PLAY', playerId: id, game: 'ruleta', amount };
+      if (pickGame === 1) return { type: 'CASINO_PLAY', playerId: id, game: 'quiniela', amount, pick: 7 };
+      if (pickGame === 2) return { type: 'CASINO_PLAY', playerId: id, game: 'carrera', amount, pick: s.turnNumber % 6 };
+      return { type: 'CASINO_DOUBLE_START', playerId: id, amount };
+    }
+    return null;
   }
 
   // Alquiler a doble o nada

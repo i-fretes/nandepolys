@@ -5,7 +5,7 @@ import { clearSession, emitAck } from '../socket';
 import Board from '../components/Board';
 import PlayerPanel from '../components/PlayerPanel';
 import ActionBar from '../components/ActionBar';
-import LogChat from '../components/LogChat';
+import Reactions from '../components/Reactions';
 import PropertyCard from '../components/PropertyCard';
 import AuctionDialog from '../components/AuctionDialog';
 import ManageDialog from '../components/ManageDialog';
@@ -39,6 +39,7 @@ export default function Game() {
   const [muted, setMutedState] = useState(isMuted());
   const [menuOpen, setMenuOpen] = useState(false);
   const [music, setMusicState] = useState(isMusicOn());
+  const [focus, setFocus] = useState(false);   // pantalla completa: esconde los paneles y agranda el tablero
   useEffect(() => { startMusic(); return () => stopMusic(); }, []);
   const me = state.players.find(p => p.id === playerId);
   const canAbandon = !!me && !me.bankrupt && state.phase === 'PLAYING';
@@ -52,9 +53,9 @@ export default function Game() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-[1800px] flex-col gap-3 p-2 sm:p-3 lg:h-screen lg:flex-row">
+    <div className={`mx-auto flex min-h-full max-w-[1900px] flex-col gap-3 p-2 sm:p-3 lg:h-screen lg:flex-row ${focus ? 'board-focus' : ''}`}>
       {/* Tabla en vivo (izquierda) */}
-      <aside className="order-3 flex flex-col gap-3 lg:order-1 lg:h-full lg:w-[300px] lg:shrink-0 lg:overflow-hidden xl:w-[340px]">
+      <aside className="side-panel order-3 flex flex-col gap-3 lg:order-1 lg:h-full lg:w-[280px] lg:shrink-0 lg:overflow-hidden xl:w-[320px]">
         <div className="max-h-[40vh] lg:max-h-none lg:flex-1 lg:overflow-hidden"><LivePanel /></div>
         <MissionsPanel />
       </aside>
@@ -63,22 +64,23 @@ export default function Game() {
         {!connected && (
           <div className="w-full rounded-xl bg-red-600 px-3 py-2 text-center text-sm font-semibold text-white">Sin conexión… intentando reconectar</div>
         )}
-        <div className="w-full" style={{ maxWidth: 'min(100%, calc(100vh - 140px))' }}>
+        <div className="w-full" style={{ maxWidth: `min(100%, calc(100vh - ${focus ? 96 : 128}px))` }}>
           <Board />
         </div>
-        <div className="w-full" style={{ maxWidth: 'min(100%, calc(100vh - 140px))' }}>
+        <div className="w-full" style={{ maxWidth: `min(100%, calc(100vh - ${focus ? 96 : 128}px))` }}>
           <ActionBar />
         </div>
       </div>
 
       {/* Panel lateral */}
-      <aside className="order-2 flex flex-col gap-3 lg:order-3 lg:h-full lg:w-[340px] lg:shrink-0 lg:overflow-hidden xl:w-[360px]">
+      <aside className="side-panel order-2 flex flex-col gap-3 lg:order-3 lg:h-full lg:w-[320px] lg:shrink-0 lg:overflow-hidden xl:w-[344px]">
         <div className="relative flex items-center justify-between gap-2 rounded-2xl bg-white/70 px-3 py-2 text-sm">
           <div>Sala <b className="tracking-widest text-py-red">{roomCode}</b></div>
           <div className="flex items-center gap-2">
             <button className="text-xs font-semibold text-py-blue hover:underline" onClick={() => setRulesOpen(true)}>📖 Reglas</button>
             <button className="text-sm text-ink/60 hover:text-ink" title={muted ? 'Activar sonido' : 'Silenciar todo'} onClick={() => { setMuted(!muted); setMutedState(!muted); }}>{muted ? '🔇' : '🔊'}</button>
             <button className={`text-sm hover:text-ink ${music ? 'text-ink/60' : 'text-ink/25'}`} title={music ? 'Apagar música de fondo' : 'Prender música de fondo'} onClick={() => { setMusicOn(!music); setMusicState(!music); }}>🎵</button>
+            <button className="text-sm text-ink/60 hover:text-ink" title={focus ? 'Volver a mostrar los paneles' : 'Pantalla completa: esconde los paneles y agranda el tablero'} onClick={() => setFocus(v => !v)}>{focus ? '🗗' : '⛶'}</button>
             <button className="btn-ghost btn-sm !px-2 !py-1 text-xs" onClick={() => setMenuOpen(v => !v)} aria-expanded={menuOpen}>☰ Más</button>
           </div>
           {menuOpen && (
@@ -101,8 +103,8 @@ export default function Game() {
             </div>
           )}
         </div>
-        <div className="scroll-thin lg:max-h-[46%] lg:overflow-y-auto"><PlayerPanel /></div>
-        <LogChat />
+        <div className="scroll-thin lg:flex-1 lg:overflow-y-auto"><PlayerPanel /></div>
+        <Reactions />
       </aside>
 
       <PropertyCard />

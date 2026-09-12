@@ -62,6 +62,13 @@ export default function FX() {
         setTimeout(() => setFloats(fs => fs.filter(x => x !== item)), 1600);
         return;
       }
+      case 'react': {
+        const a = anchor(f.playerId);
+        const item: Float = { id: Date.now() + Math.random(), x: a.x, y: a.y - 16, text: f.emoji, tone: 'react' };
+        setFloats(fs => [...fs, item]);
+        setTimeout(() => setFloats(fs => fs.filter(x => x !== item)), 1800);
+        return;
+      }
       case 'shake': {
         const root = document.getElementById('root');
         if (!root) return;

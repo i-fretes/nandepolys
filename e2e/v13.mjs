@@ -6,6 +6,15 @@ const BASE = process.argv[2] ?? 'http://localhost:8080';
 const OUT = process.argv[3] ?? 'e2e/v13';
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined });
+
+// El dado ñandú se apaga en las pruebas: cambian las casillas donde se cae
+async function offNandu(page) {
+  const cb = page.locator('label', { hasText: 'Dado ñandú' }).locator('input[type=checkbox]');
+  if (await cb.count() && await cb.isChecked()) {
+    await cb.click();
+    await page.waitForFunction(el => !el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
+  }
+}
 const log = (...a) => console.log(...a);
 const ok = (cond, msg) => { log(cond ? '✔' : '✘', msg); if (!cond) process.exitCode = 1; };
 
@@ -49,6 +58,7 @@ for (const label of ['Casinos', 'Desafíos entre jugadores', 'Duelo mayor', 'La 
 }
 await a.waitForTimeout(400);
 await a.screenshot({ path: `${OUT}/lobby-v13.png` });
+await offNandu(a);
 await a.click('button:has-text("Empezar partida")');
 await Promise.all([a, b, c].map(p => p.waitForSelector('.board')));
 ok((await a.locator('.tile').count()) === 44, 'tablero de 44 casillas');

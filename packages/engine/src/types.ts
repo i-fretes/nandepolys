@@ -34,6 +34,12 @@ export interface Card { id: string; deck: DeckId; text: string; effect: CardEffe
 
 export type TokenId = 'mate' | 'chipa' | 'nanduti' | 'carreta' | 'jaguarete' | 'arpa';
 
+/**
+ * Caras del tercer dado ("dado ñandú"). Existe para que el tablero se reparta mejor:
+ * con dos dados la suma se amontona en 7 y en una partida corta siempre queda algún color sin pisar.
+ */
+export type SpeedFace = 'mas1' | 'mas2' | 'mas3' | 'colectivo' | 'feria' | 'turbo';
+
 export interface GameSettings {
   startingCash: number;        // 1500 por defecto
   auctions: boolean;           // subastar propiedades rechazadas (regla oficial)
@@ -52,6 +58,7 @@ export interface GameSettings {
   missions: boolean;           // misiones secretas por jugador
   events: boolean;             // eventos globales (ruleta al completar cada vuelta de mesa)
   duels: boolean;              // ficha de duelo cada 3 vueltas: Escopeta / Truco
+  speedDie: boolean;           // tercer dado "ñandú": reparte mejor el tablero (ver SpeedFace)
 }
 
 export interface Player {
@@ -143,9 +150,13 @@ export interface DuelState {
 
 export type CasinoGame = 'ruleta' | 'quiniela' | 'doble' | 'carrera';
 export interface CasinoState {
-  playerId: string;
-  played: boolean;             // ya jugó una vez (una apuesta por visita, salvo doble o nada en curso)
-  double: { stake: number; step: number } | null;  // doble o nada en curso
+  /** El que cayó en la casilla: tiene que apostar sí o sí. */
+  triggeredBy: string;
+  /** Todos los que pueden jugar esta ronda de casino (los que no cayeron pueden pasar). */
+  players: string[];
+  played: Record<string, boolean>;   // ya apostó (una apuesta por visita)
+  passed: Record<string, boolean>;   // se fue sin apostar
+  double: Record<string, { stake: number; step: number } | null>;  // doble o nada en curso, por jugador
 }
 
 export interface RentOfferState {
@@ -204,6 +215,8 @@ export interface AuctionState {
 export interface TradeSide { cash: number; properties: number[]; jailCards: number }
 export interface TradeState {
   id: string; fromId: string; toId: string; give: TradeSide; receive: TradeSide;
+  /** true en las ofertas de un "metiche": alguien que se metió en el trato de otros. */
+  butt?: boolean;
 }
 
 export interface DebtState {
@@ -230,6 +243,12 @@ export interface GameState {
   turnPhase: TurnPhase;
   turnNumber: number;
   dice: [number, number] | null;
+  /** Cara del tercer dado en la última tirada (null si la sala lo tiene apagado). */
+  speedDie: SpeedFace | null;
+  /** Tirada extra que solo sirve para cobrar un servicio (carta "se cortó la luz"): no pisa los dados del tablero. */
+  rentDice: [number, number] | null;
+  /** Cuántas veces se pisó cada color en la partida; lo usa la cara "feria" del tercer dado. */
+  groupLandings: Record<Group, number>;
   doublesCount: number;
   pendingReroll: boolean;
   properties: Record<number, PropertyState>;
@@ -240,6 +259,10 @@ export interface GameState {
   auction: AuctionState | null;
   auctionQueue: number[];
   pendingTrade: TradeState | null;
+  /** Ofertas de los "metiches": van por lo mismo que pedía la propuesta original. */
+  tradeRivals: TradeState[];
+  /** El que propuso puede mejorar su oferta una sola vez cuando aparece un metiche. */
+  tradeImproved: boolean;
   debt: DebtState | null;
   freeParkingPot: number;
   jackpot: number;
@@ -279,6 +302,8 @@ export type Action =
   | { type: 'TRADE_ACCEPT'; playerId: string; tradeId: string }
   | { type: 'TRADE_REJECT'; playerId: string; tradeId: string }
   | { type: 'TRADE_CANCEL'; playerId: string; tradeId: string }
+  | { type: 'TRADE_BUTT_IN'; playerId: string; give: TradeSide }     // metiche: ofrezco lo mío por lo mismo
+  | { type: 'TRADE_IMPROVE'; playerId: string; give: TradeSide }     // el que propuso mejora su oferta (una vez)
   | { type: 'PAY_DEBT'; playerId: string }
   | { type: 'DECLARE_BANKRUPTCY'; playerId: string }
   | { type: 'END_TURN'; playerId: string }

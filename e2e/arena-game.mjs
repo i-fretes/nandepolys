@@ -4,6 +4,15 @@ import { mkdirSync } from 'node:fs';
 const BASE = process.argv[2] ?? 'http://localhost:8080'; const OUT = process.argv[3] ?? 'e2e/arena'; mkdirSync(OUT, { recursive: true });
 const GAME = process.argv[4] ?? 'cartas';
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined });
+
+// El dado ñandú se apaga en las pruebas: cambian las casillas donde se cae
+async function offNandu(page) {
+  const cb = page.locator('label', { hasText: 'Dado ñandú' }).locator('input[type=checkbox]');
+  if (await cb.count() && await cb.isChecked()) {
+    await cb.click();
+    await page.waitForFunction(el => !el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
+  }
+}
 const MOBILE = process.env.MOBILE === '1';
 const mk = async () => { const ctx = await browser.newContext(MOBILE ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage(); p.on('dialog', d => d.accept()); p.on('pageerror', e => console.error('PAGE ERROR', e.message)); return p; };
 const dbg = (p, data) => p.evaluate(d => new Promise(res => window.__nandepoly.socket.emit('debug:set', d, res)), data);
@@ -16,6 +25,7 @@ const code = a.url().split('/sala/')[1];
 for (const [p, name, tok] of [[b, 'Lucía', 'Chipa'], [c, 'Mateo', 'Carreta']]) { await p.goto(`${BASE}/sala/${code}`); await p.waitForSelector('button:has-text("Entrar a la sala")'); await p.fill('input[maxlength="20"]', name); await p.click(`button[title="${tok}"]`); await p.click('button:has-text("Entrar a la sala")'); }
 await a.waitForSelector('text=Jugadores (3/6)');
 const cb = a.locator('label', { hasText: 'La Arena' }).locator('input[type=checkbox]'); await cb.click(); await a.waitForFunction(el => el.checked, await cb.elementHandle(), { timeout: 5000, polling: 200 });
+await offNandu(a);
 await a.click('button:has-text("Empezar partida")'); await a.waitForSelector('.board');
 const s0 = await st(a); const ids = {}; for (const p of [a, b, c]) ids[await p.evaluate(() => window.__nandepoly.store.getState().playerId)] = p;
 const meA = await a.evaluate(() => window.__nandepoly.store.getState().playerId);

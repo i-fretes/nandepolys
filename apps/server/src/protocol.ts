@@ -22,6 +22,7 @@ export const SettingsSchema = z.object({
   missions: z.boolean().optional(),
   events: z.boolean().optional(),
   duels: z.boolean().optional(),
+  speedDie: z.boolean().optional(),
 }).strict();
 
 export const CreateRoomSchema = z.object({
@@ -63,6 +64,8 @@ export const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('JAIL_CARD') }),
   z.object({ type: z.literal('TAX_CHOICE'), choice: z.enum(['flat', 'percent']) }),
   z.object({ type: z.literal('TRADE_PROPOSE'), toPlayerId: z.string(), give: TradeSideSchema, receive: TradeSideSchema }),
+  z.object({ type: z.literal('TRADE_BUTT_IN'), give: TradeSideSchema }),
+  z.object({ type: z.literal('TRADE_IMPROVE'), give: TradeSideSchema }),
   z.object({ type: z.literal('TRADE_ACCEPT'), tradeId: z.string() }),
   z.object({ type: z.literal('TRADE_REJECT'), tradeId: z.string() }),
   z.object({ type: z.literal('TRADE_CANCEL'), tradeId: z.string() }),
@@ -110,3 +113,7 @@ export const DraftingSchema = z.object({ toId: z.string().nullable() });
 export const ChatSchema = z.object({ text: z.string().min(1).max(300) });
 
 export type ClientAction = z.infer<typeof ActionSchema>;
+
+/** Reacciones rápidas en la partida (reemplazan al chat). */
+export const REACTIONS = ['👏', '😂', '😱', '🔥', '🧉', '😭', '🤝', '💸'] as const;
+export const ReactSchema = z.object({ emoji: z.enum(REACTIONS) }).strict();

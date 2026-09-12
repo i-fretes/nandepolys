@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { customAlphabet, nanoid } from 'nanoid';
-import { DEFAULT_SETTINGS, createGame, emptyStats, type GameState } from '@nandepoly/engine';
+import { DEFAULT_SETTINGS, createGame, emptyGroupLandings, emptyStats, type GameState } from '@nandepoly/engine';
 
 export interface ChatMessage { id: string; playerId: string | null; name: string; text: string; at: number }
 
@@ -39,6 +39,12 @@ export class RoomManager {
             r.state.jackpot ??= 0; r.state.casino ??= null; r.state.rentOffer ??= null; r.state.challenge ??= null;
             r.state.arena ??= null; r.state.activeEvent ??= null; r.state.eventHistory ??= []; r.state.roundStarterId ??= null;
             r.state.duel ??= null; r.state.lastLootbox ??= null;
+            r.state.usedContent ??= {}; r.state.speedDie ??= null; r.state.rentDice ??= null;
+            r.state.groupLandings ??= emptyGroupLandings();
+            r.state.tradeRivals ??= []; r.state.tradeImproved ??= false;
+            // El casino pasó de un jugador a mesa abierta: descartamos el estado viejo
+            const oldCasino = r.state.casino as unknown as { playerId?: string } | null;
+            if (oldCasino && oldCasino.playerId) { r.state.casino = null; if (r.state.turnPhase === 'CASINO') r.state.turnPhase = 'END_TURN'; }
             for (const p of r.state.players) { p.duelTokens ??= 0; p.missions ??= []; p.stats ??= emptyStats(); }
             this.rooms.set(r.code, r);
           }

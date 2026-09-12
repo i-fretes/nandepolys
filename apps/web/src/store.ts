@@ -58,6 +58,7 @@ interface Store {
   setEventSpin(v: null): void;
   setLastDuelResult(v: null): void;
   sendDrafting(toId: string | null): void;
+  react(emoji: string): void;
   enterRoom(info: { roomCode: string; playerId: string | null; playerToken: string; spectator: boolean } & RoomView): void;
   applyView(view: RoomView, events?: GameEvent[]): void;
   addChat(msg: ChatMessage): void;
@@ -86,7 +87,8 @@ export type FxInput =
   | { kind: 'bars'; playerId: string }
   | { kind: 'crack'; playerId: string }
   | { kind: 'jackpot'; playerId: string; amount: number }
-  | { kind: 'rain'; playerId: string };
+  | { kind: 'rain'; playerId: string }
+  | { kind: 'react'; playerId: string; emoji: string };
 export type FxEvent = FxInput & { id: number };
 
 let fxCounter = 0;
@@ -134,6 +136,7 @@ export const useStore = create<Store>((set, get) => ({
   setEventSpin: v => set({ eventSpin: v }),
   setLastDuelResult: v => set({ lastDuelResult: v }),
   sendDrafting: toId => { try { socket.emit('trade:drafting', { toId }); } catch { /* ignore */ } },
+  react: emoji => { try { socket.emit('react', { emoji }); } catch { /* ignore */ } },
 
   enterRoom: info => set({
     roomCode: info.roomCode, playerId: info.playerId, playerToken: info.playerToken, spectator: info.spectator,
@@ -204,8 +207,8 @@ export const useStore = create<Store>((set, get) => ({
         if (e.type === 'rent_don_proposed' && e.data?.to === me) { toast('🎲 Te proponen doble o nada'); sfx.notify(); }
         // ---- Tabla en vivo ----
         const live = (entry: Omit<LiveEntry, 'id' | 'at'>) => { feed.push({ ...entry, id: ++fxCounter, at: Date.now() }); };
-        if (e.type === 'trade_proposed' || e.type === 'trade_done' || e.type === 'trade_rejected') {
-          live({ kind: e.type, text: e.text, from: e.data?.from as string, to: e.data?.to as string, data: e.data ?? {} });
+        if (e.type === 'trade_proposed' || e.type === 'trade_done' || e.type === 'trade_rejected' || e.type === 'trade_butt_in' || e.type === 'trade_improved') {
+          live({ kind: e.type === 'trade_butt_in' || e.type === 'trade_improved' ? 'trade_proposed' : e.type, text: e.text, from: e.data?.from as string, to: e.data?.to as string, data: e.data ?? {} });
           if (e.type === 'trade_done') { sfx.buy(); push({ kind: 'confetti', playerId: e.data?.from as string }); }
           if (e.data?.from) drafting = Object.fromEntries(Object.entries(drafting).filter(([k]) => k !== e.data!.from));
         }
@@ -274,6 +277,9 @@ export const useStore = create<Store>((set, get) => ({
           else { patch.cardModal = card; sfx.card(); }
         }
         if (e.type === 'trade_proposed' && view.state.pendingTrade?.toId === me) { toast('Te propusieron un intercambio', { icon: '🤝' }); sfx.notify(); }
+        if (e.type === 'trade_proposed' && me && e.data?.from !== me && e.data?.to !== me) { toast('Hay un trato en la mesa: podés meterte de metiche', { icon: '🕵️', duration: 7000 }); sfx.notify(); }
+        if (e.type === 'trade_butt_in') { toast(e.text, { icon: '🕵️', duration: 7000 }); sfx.notify(); }
+        if (e.type === 'trade_improved') { toast(e.text, { icon: '💪', duration: 5000 }); }
         if ((e.type === 'rent' || e.type === 'debt_paid') && e.data?.to === me) { toast.success(e.text); sfx.coin(); }
         if ((e.type === 'rent' || e.type === 'tax' || e.type === 'expense') && e.playerId === me) sfx.pay();
         if ((e.type === 'income' || e.type === 'salary' || e.type === 'pot') && e.playerId === me) sfx.coin();
@@ -404,6 +410,9 @@ socket.on('state:update', (payload: RoomView & { events: GameEvent[] }) => {
 socket.on('chat:message', (msg: ChatMessage) => useStore.getState().addChat(msg));
 socket.on('lootbox:open', (d: { playerId: string }) => {
   useStore.setState(s => (s.lootbox && s.lootbox.playerId === d.playerId && !s.lootbox.openedAt ? { lootbox: { ...s.lootbox, openedAt: Date.now() } } : {}));
+});
+socket.on('react', (d: { playerId: string; emoji: string }) => {
+  useStore.getState().pushFx({ kind: 'react', playerId: d.playerId, emoji: d.emoji });
 });
 socket.on('trade:drafting', (d: { fromId: string; toId: string | null; at: number }) => {
   useStore.setState(s => {

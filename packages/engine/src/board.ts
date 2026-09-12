@@ -65,6 +65,20 @@ export const JAIL_FINE = 50;
 export const TOTAL_HOUSES = 32;
 export const TOTAL_HOTELS = 12;
 
+export const GROUPS: Group[] = ['marron', 'celeste', 'rosa', 'naranja', 'rojo', 'amarillo', 'verde', 'azul'];
+
+/** Casillas que reparten cartas (Suerte y Cooperativa): destino de la cara "colectivo". */
+export const CARD_TILES = [2, 8, 19, 24, 36, 40];
+
+/** Primera casilla de la lista que aparece avanzando desde `from` (sin contar `from`). */
+export function nextTileForward(from: number, targets: number[]): number {
+  for (let i = 1; i <= BOARD_SIZE; i++) {
+    const t = (from + i) % BOARD_SIZE;
+    if (targets.includes(t)) return t;
+  }
+  return from;
+}
+
 export const GROUP_COLORS: Record<Group, string> = {
   marron: '#8B4513', celeste: '#6EC1E4', rosa: '#E75480', naranja: '#F7941D',
   rojo: '#D62828', amarillo: '#F4D03F', verde: '#2E8B57', azul: '#1F4E9A',
@@ -76,7 +90,7 @@ export const GROUP_NAMES: Record<Group, string> = {
 };
 
 export const TOKENS: { id: string; label: string; emoji: string }[] = [
-  { id: 'mate', label: 'Mate y bombilla', emoji: '🧉' },
+  { id: 'mate', label: 'Guampa y bombilla', emoji: '🧉' },
   { id: 'chipa', label: 'Chipa', emoji: '🥯' },
   { id: 'nanduti', label: 'Ñandutí', emoji: '🕸️' },
   { id: 'carreta', label: 'Carreta', emoji: '🛺' },
