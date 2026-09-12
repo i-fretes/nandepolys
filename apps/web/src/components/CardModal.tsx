@@ -5,15 +5,16 @@ import Modal from './Modal';
 /** Muestra la carta que acaba de sacar un jugador. */
 export default function CardModal() {
   const cardModal = useStore(s => s.cardModal);
+  const queued = useStore(s => s.cardQueue.length);
   const setCardModal = useStore(s => s.setCardModal);
   const state = useStore(s => s.state);
   const moving = useMoving();
 
   useEffect(() => {
     if (!cardModal || moving) return;
-    const id = setTimeout(() => setCardModal(null), 7000);
+    const id = setTimeout(() => setCardModal(null), queued > 0 ? 4000 : 7000);
     return () => clearTimeout(id);
-  }, [cardModal, setCardModal, moving]);
+  }, [cardModal, setCardModal, moving, queued]);
 
   const who = cardModal ? state?.players.find(p => p.id === cardModal.playerId) : null;
   const isChance = cardModal?.card.deck === 'chance';
@@ -27,7 +28,9 @@ export default function CardModal() {
             <div className="mt-1 text-lg font-black">{isChance ? 'Suerte' : 'Cooperativa'}</div>
             <p className="mt-3 text-base font-medium leading-snug">{cardModal.card.text}</p>
           </div>
-          <button className="btn-ghost mt-4 w-full" onClick={() => setCardModal(null)}>Entendido</button>
+          <button className="btn-ghost mt-4 w-full" onClick={() => setCardModal(null)}>
+            {queued > 0 ? `Siguiente carta (${queued} en espera)` : 'Entendido'}
+          </button>
         </div>
       )}
     </Modal>

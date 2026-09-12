@@ -154,6 +154,7 @@ export interface RentOfferState {
   tileId: number;
   rent: number;
   proposed: boolean;           // el que paga propuso doble o nada; espera al dueño
+  accepted: boolean;           // el dueño aceptó: falta que el que paga tire los dados
 }
 
 export type ChallengeKind = 'dados' | 'ppt' | 'trivia' | 'terere';
@@ -182,6 +183,8 @@ export interface ChallengeState {
     winnerId?: string | null;
     reason?: string;
   };
+  /** Si el desafío nació de un alquiler a doble o nada, acá va el contexto para resolverlo. */
+  rent?: { payerId: string; ownerId: string; tileId: number; rent: number } | null;
   secret: {                                   // nunca se envía a los clientes
     choices?: Record<string, PptChoice>;
     answer?: number;
@@ -246,6 +249,8 @@ export interface GameState {
   arena: ArenaState | null;
   activeEvent: ActiveEvent | null;
   eventHistory: GlobalEventId[];
+  /** Índices ya usados de cada catálogo (trivia, imágenes, cadenas…) para no repetir en la misma partida. */
+  usedContent: Record<string, number[]>;
   roundStarterId: string | null;           // quién abrió la vuelta de mesa actual
   duel: DuelState | null;
   lastLootbox: { playerId: string; prize: string; amount: number; index: number } | null;
@@ -292,6 +297,7 @@ export type Action =
   | { type: 'RENT_DON_PROPOSE'; playerId: string }
   | { type: 'RENT_DON_ACCEPT'; playerId: string }
   | { type: 'RENT_DON_REJECT'; playerId: string }
+  | { type: 'RENT_DON_ROLL'; playerId: string }
   // Desafíos
   | { type: 'CHALLENGE_PROPOSE'; playerId: string; toId: string; kind: ChallengeKind; amount: number }
   | { type: 'CHALLENGE_ACCEPT'; playerId: string }

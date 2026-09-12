@@ -121,7 +121,7 @@ export default function Lobby() {
               </Row>
             )}
             <Toggle label="Jackpot: lo perdido en el Casino se acumula y el doble seis se lo lleva" checked={s.jackpot} disabled={!isHost} onChange={v => setSetting('jackpot', v)} />
-            <Toggle label="Alquiler a doble o nada (7+ no pagás, 6- pagás doble; el dueño decide)" checked={s.rentDoubleOrNothing} disabled={!isHost} onChange={v => setSetting('rentDoubleOrNothing', v)} />
+            <Toggle label="Alquiler a doble o nada: el dueño decide y se define en un mini-desafío (si ganás no pagás, si perdés pagás el doble)" checked={s.rentDoubleOrNothing} disabled={!isHost} onChange={v => setSetting('rentDoubleOrNothing', v)} />
             <Toggle label="Desafíos entre jugadores (dados, piedra-papel-tijera, trivia, tereré) + cartas ¡Desafío!" checked={s.challenges} disabled={!isHost} onChange={v => setSetting('challenges', v)} />
             <Toggle label="Duelo mayor: cada 3 vueltas ganás una ficha para retar a alguien por hasta ₲ 500.000 a Escopeta o Truco a 2 manos (negarse cuesta ₲ 50.000)" checked={s.duels} disabled={!isHost} onChange={v => setSetting('duels', v)} />
             <div className="my-2 border-t border-black/10 pt-2 text-xs font-bold uppercase tracking-wide text-ink/50">🏟️ Fiesta (opcional)</div>

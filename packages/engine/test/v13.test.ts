@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ARENA_GAMES, ARENA_REWARDS, EVENTS, LOOTBOX, MISSIONS, applyAction, applyTruco, envidoValue, hasFlor, newTruco, power, rentFor, sapoPos, toClientState,
+  ARENA_GAMES, ARENA_REWARDS, BLURRY, CARRETA_PAYOUT, CHAINS, CUANTOS, EVENTS, QUINIELA_PAYOUT, RULETA_WIN_CHANCE, TRIVIA, LOOTBOX, MISSIONS, applyAction, applyTruco, envidoValue, hasFlor, newTruco, power, rentFor, sapoPos, toClientState,
   type GameState,
 } from '../src';
 import { act, cur, give, makeGame, seedFor, setPos, withDice } from './helpers';
@@ -528,5 +528,73 @@ describe('v1.3.4: juegos nuevos de la Arena', () => {
     }
     expect(s.arena!.stage).toBe('done');
     expect(s.arena!.ranking).toHaveLength(4);
+  });
+});
+
+describe('v1.3.5: contenido, casino y tiempos', () => {
+  const D = (s: GameState) => s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  it('hay mucho más contenido y no se repite dentro de una misma partida', () => {
+    expect(TRIVIA.length).toBeGreaterThanOrEqual(270);
+    expect(CUANTOS.length).toBeGreaterThanOrEqual(65);
+    expect(BLURRY.length).toBeGreaterThanOrEqual(60);
+    expect(CHAINS.length).toBeGreaterThanOrEqual(40);
+    // las preguntas de trivia no se repiten aunque se jueguen muchos desafíos seguidos
+    let s = makeGame(2, { challenges: true }, 5);
+    const [a, b] = s.players.map(p => p.id);
+    const vistas = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      s = applyAction(s, { type: 'CHALLENGE_PROPOSE', playerId: a, toId: b, kind: 'trivia', amount: 10 }).state;
+      s = applyAction(s, { type: 'CHALLENGE_ACCEPT', playerId: b }).state;
+      const q = s.challenge!.data.question!.q;
+      expect(vistas.has(q)).toBe(false);
+      vistas.add(q);
+      s = applyAction(s, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }).state;
+      if (s.turnPhase !== 'AWAITING_ROLL') s = applyAction(s, { type: 'FORCE_END_TURN', playerId: s.hostId }).state;
+      s.currentPlayerIndex = s.players.findIndex(p => p.id === a);
+      s.turnPhase = 'AWAITING_ROLL';
+    }
+    expect(vistas.size).toBe(40);
+    expect(s.usedContent.trivia).toHaveLength(40);
+  });
+
+  it('Palabra bomba: una sola vida y la mecha se acorta con cada palabra', () => {
+    let s = makeGame(3, { arena: true }, 15);
+    const a = cur(s).id;
+    s = act(withDice(setPos(s, a, 3), [1, 2]), { type: 'ROLL', playerId: a }).state;
+    const ids = s.arena!.players;
+    s.arena!.options[0] = 'bomba';
+    for (const id of ids) s = applyAction(s, { type: 'ARENA_VOTE', playerId: id, option: 0 }).state;
+    s = applyAction(s, { type: 'ARENA_START', playerId: 'server', now: 0 }).state;
+    expect(Object.values(D(s).lives as Record<string, number>).every(v => v === 1)).toBe(true);
+    const fuse0 = s.arena!.secret.fuse as number;
+    expect(fuse0).toBeLessThanOrEqual(9000);
+    // el que tiene el turno deja explotar la bomba → queda afuera con un solo boom
+    const victim = D(s).turn as string;
+    s = applyAction(s, { type: 'ARENA_TICK', playerId: 'server', now: 5000 + fuse0 + 100 }).state;
+    expect(s.arena!.eliminated).toContain(victim);
+    expect(s.arena!.alive).toHaveLength(2);
+  });
+
+  it('el Casino paga menos de lo justo en las cuatro mesas (gana la banca)', () => {
+    // Ruleta: menos del 50 % de chances a pago 1 a 1
+    expect(RULETA_WIN_CHANCE).toBeLessThan(50);
+    // Quiniela: para cada número, pago < (36/combinaciones) - 1
+    const combos: Record<number, number> = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1 };
+    for (const n of Object.keys(combos).map(Number)) {
+      const justo = 36 / combos[n] - 1;
+      expect(QUINIELA_PAYOUT[n]).toBeLessThan(justo);
+    }
+    // Carrera: 6 carretas, pago justo sería 5 a 1
+    expect(CARRETA_PAYOUT).toBeLessThan(5);
+  });
+
+  it('doble o nada del casino: el doble uno corta la racha', () => {
+    let s = makeGame(2, { casino: true }, 3);
+    const a = cur(s).id;
+    s = { ...s, turnPhase: 'CASINO', casino: { playerId: a, played: false, double: null } };
+    s = applyAction({ ...s, seed: seedFor([1, 1]) }, { type: 'CASINO_DOUBLE_START', playerId: a, amount: 100 }).state;
+    expect(s.casino!.double).toBeNull();                      // perdió con doble uno
+    expect(s.players.find(p => p.id === a)!.cash).toBe(1400);
   });
 });

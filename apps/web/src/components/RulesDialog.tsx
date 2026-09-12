@@ -51,11 +51,11 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
   },
   {
     title: 'Casino (dos casillas) y Jackpot', icon: '🎰',
-    body: <p>Con la opción activada, las dos casillas 🎰 (a los lados del tablero) son <b>Casinos</b>. Sin la opción son casillas de descanso. Al caer podés apostar una vez (o irte sin apostar): <b>Ruleta</b> (49 % ganás lo apostado), <b>Quiniela</b> (elegís la suma de los dados: el 7 paga 5 veces, el 2 y el 12 pagan 30), <b>Doble o nada</b> (par dobla, impar perdés todo; retirate cuando quieras, hasta 4 pasos), <b>Carrera de carretas</b> (seis carretas, paga 5 a 1). Con el <b>Jackpot</b> activo, todo lo que se pierde se acumula y se lo lleva quien saque doble seis en su tirada normal.</p>,
+    body: <p>Con la opción activada, las dos casillas 🎰 (a los lados del tablero) son <b>Casinos</b>. Sin la opción son casillas de descanso. Al caer podés apostar una vez (o irte sin apostar): <b>Ruleta</b> (43 % ganás lo apostado), <b>Quiniela</b> (elegís la suma de los dados: el 7 paga 4 veces, el 2 y el 12 pagan 25), <b>Doble o nada</b> (par dobla, impar o doble uno perdés todo; retirate cuando quieras, hasta 4 pasos), <b>Carrera de carretas</b> (seis carretas, paga 4 a 1). <b>Ojo: la banca tiene ventaja en las cuatro mesas</b>, así que a la larga el Casino gana; jugá poco y retirate a tiempo. Con el <b>Jackpot</b> activo, todo lo que se pierde se acumula y se lo lleva quien saque doble seis en su tirada normal.</p>,
   },
   {
     title: 'Doble o nada en alquileres', icon: '🎲',
-    body: <p>Con la opción activada, al caer en propiedad ajena podés <b>pagar</b> o <b>proponer doble o nada</b>. El dueño decide si acepta: si acepta, tirás los dados; con <b>7 o más no pagás nada</b>, con <b>6 o menos pagás el doble</b>. Si rechaza, pagás lo normal. Solo podés proponerlo si podrías cubrir el doble.</p>,
+    body: <p>Con la opción activada, al caer en propiedad ajena podés <b>pagar</b> o <b>proponer doble o nada</b>. El dueño decide: si rechaza, pagás lo normal; si acepta, <b>lo definen mano a mano en un mini-desafío</b> (duelo de dados, piedra-papel-tijera, trivia o tereré, elegido al azar). Si ganás vos, <b>no pagás nada</b>; si gana el dueño, <b>pagás el doble</b>; si empatan, pagás lo normal. Solo podés proponerlo si podrías cubrir el doble.</p>,
   },
   {
     title: 'Desafíos', icon: '⚔️',

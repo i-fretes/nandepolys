@@ -93,6 +93,7 @@ function randomAction(s: GameState, rnd: () => number, now = 0): Action | null {
     }
     case 'RENT_OFFER': {
       const o = s.rentOffer!;
+      if (o.accepted) return { type: 'RENT_DON_ROLL', playerId: o.payerId };
       if (!o.proposed) return rnd() < 0.5 ? { type: 'RENT_PAY', playerId: o.payerId } : { type: 'RENT_DON_PROPOSE', playerId: o.payerId };
       return rnd() < 0.5 ? { type: 'RENT_DON_ACCEPT', playerId: o.ownerId } : { type: 'RENT_DON_REJECT', playerId: o.ownerId };
     }

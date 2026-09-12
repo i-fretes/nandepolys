@@ -49,8 +49,10 @@ export function emptyStats(): PlayerStats {
 }
 export const CHALLENGE_KINDS: ChallengeKind[] = ['dados', 'ppt', 'trivia', 'terere'];
 /** Pago de la quiniela según la suma elegida (veces la apuesta, además de recuperarla). */
-export const QUINIELA_PAYOUT: Record<number, number> = { 2: 30, 3: 15, 4: 10, 5: 8, 6: 6, 7: 5, 8: 6, 9: 8, 10: 10, 11: 15, 12: 30 };
-export const CARRETA_PAYOUT = 5;
+// Pagos del Casino: siempre por debajo de lo "justo" (la banca gana a la larga, ~15 %)
+export const QUINIELA_PAYOUT: Record<number, number> = { 2: 25, 3: 13, 4: 8, 5: 6, 6: 5, 7: 4, 8: 5, 9: 6, 10: 8, 11: 13, 12: 25 };
+export const CARRETA_PAYOUT = 4;
+export const RULETA_WIN_CHANCE = 43;          // de 100: la ruleta paga 1 a 1 pero gana menos de la mitad de las veces
 export const DOUBLE_MAX_STEPS = 4;
 
 export const MAX_PLAYERS = 6;
@@ -96,6 +98,7 @@ export function createGame(roomCode: string, hostId: string, seed: number, setti
     arena: null,
     activeEvent: null,
     eventHistory: [],
+    usedContent: {},
     roundStarterId: null,
     duel: null,
     lastLootbox: null,
@@ -384,7 +387,7 @@ function resolveLanding(ctx: Ctx, p: Player, opts: { rentMultiplier?: number; ut
     if (opts.rentMultiplier) rent *= opts.rentMultiplier;
     const owner = player(s, ps.owner);
     if (s.settings.rentDoubleOrNothing && rent > 0 && !owner.bankrupt) {
-      s.rentOffer = { payerId: p.id, ownerId: owner.id, tileId: t.id, rent, proposed: false };
+      s.rentOffer = { payerId: p.id, ownerId: owner.id, tileId: t.id, rent, proposed: false, accepted: false };
       s.turnPhase = 'RENT_OFFER';
       emit(ctx, 'rent_due', `${p.name} debe ${fmt(rent)} de alquiler a ${owner.name} por ${t.name}. Puede pagar o proponer doble o nada.`, p.id, { amount: rent, to: owner.id, tileId: t.id });
       return;
@@ -1114,21 +1117,46 @@ function rentDonAnswer(ctx: Ctx, playerId: string, accept: boolean) {
   const o = s.rentOffer!;
   if (o.ownerId !== playerId) throw new RuleError('No te corresponde.');
   if (!o.proposed) throw new RuleError('Todavía no te propusieron nada.');
+  if (o.accepted) throw new RuleError('Ya aceptaste: falta la tirada.');
+  const payer = player(s, o.payerId);
+  const owner = player(s, o.ownerId);
+  const name = tile(o.tileId).name;
+  if (!accept) {
+    s.rentOffer = null;
+    emit(ctx, 'rent_don_rejected', `${owner.name} no aceptó el doble o nada.`, playerId);
+    return payRent(ctx, payer, owner, o.rent, name);
+  }
+  // Aceptado: se juega un mini-desafío mano a mano. Si gana el que paga, no paga nada; si gana el dueño, paga doble.
+  const kind = CHALLENGE_KINDS[nextRandomInt(ctx, CHALLENGE_KINDS.length)];
+  s.tradeCounter++;
+  s.rentOffer = null;
+  s.challenge = {
+    id: `r${s.tradeCounter}`, kind, fromId: o.payerId, toId: o.ownerId, amount: 0, status: 'playing', forced: true,
+    returnPhase: 'END_TURN', data: {}, secret: {}, rent: { payerId: o.payerId, ownerId: o.ownerId, tileId: o.tileId, rent: o.rent },
+  };
+  s.turnPhase = 'CHALLENGE';
+  emit(ctx, 'rent_don_accepted', `⚔️ ${owner.name} aceptó el doble o nada: lo definen a ${challengeName(kind)}. Si gana ${payer.name} no paga nada; si gana ${owner.name}, cobra ${fmt(o.rent * 2)}.`, playerId, { to: o.payerId, amount: o.rent, kind });
+  beginChallenge(ctx);
+}
+
+/** La tirada del doble o nada: la hace el que paga (o el servidor, si se le acaba el tiempo). */
+function rentDonRoll(ctx: Ctx, playerId: string) {
+  const s = ctx.s;
+  requirePlaying(ctx); requirePhase(ctx, 'RENT_OFFER');
+  const o = s.rentOffer!;
+  if (!o.accepted) throw new RuleError('Todavía no aceptaron el doble o nada.');
+  if (o.payerId !== playerId && playerId !== s.hostId) throw new RuleError('Tira el que tiene que pagar.');
   const payer = player(s, o.payerId);
   const owner = player(s, o.ownerId);
   const name = tile(o.tileId).name;
   s.rentOffer = null;
-  if (!accept) {
-    emit(ctx, 'rent_don_rejected', `${owner.name} no aceptó el doble o nada.`, playerId);
-    return payRent(ctx, payer, owner, o.rent, name);
-  }
   const r = rollDice(s.seed);
   s.seed = r.seed;
   const sum = r.dice[0] + r.dice[1];
   const win = sum >= 7;
-  emit(ctx, 'rent_don_roll', `${owner.name} aceptó. ${payer.name} tiró ${r.dice[0]} + ${r.dice[1]} = ${sum}: ${win ? '¡no paga nada!' : `paga el doble, ${fmt(o.rent * 2)}.`}`, o.payerId, { dice: r.dice, win, amount: o.rent * 2, to: o.ownerId });
+  emit(ctx, 'rent_don_roll', `${payer.name} tiró ${r.dice[0]} + ${r.dice[1]} = ${sum}: ${win ? '¡no paga nada!' : `paga el doble, ${fmt(o.rent * 2)}.`}`, o.payerId, { dice: r.dice, win, amount: o.rent * 2, to: o.ownerId });
   if (win) { payer.stats.donWins++; return finishResolution(ctx); }
-  payRent(ctx, payer, owner, o.rent * 2, name);
+  return payRent(ctx, payer, owner, o.rent * 2, `${name} (doble o nada)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1179,7 +1207,7 @@ function casinoPlay(ctx: Ctx, playerId: string, game: 'ruleta' | 'quiniela' | 'c
 
   if (game === 'ruleta') {
     const r = nextRandomInt(ctx, 100) + 1; // 1..100
-    const win = r <= 49;
+    const win = r <= RULETA_WIN_CHANCE;
     const mult = s.activeEvent?.id === 'noche_casino' ? 3 : 2;
     if (win) { p.cash += amount * mult; p.stats.casinoWins++; } else casinoLoss(ctx, amount);
     emit(ctx, 'casino_result', `${p.name} apostó ${fmt(amount)} en la Ruleta: salió ${r}, ${win ? `¡ganó ${fmt(amount)}!` : 'perdió.'}`, playerId,
@@ -1241,7 +1269,7 @@ function casinoDoubleRoll(ctx: Ctx, p: Player) {
   const d = c.double!;
   const r = rollDice(s.seed); s.seed = r.seed;
   const sum = r.dice[0] + r.dice[1];
-  const win = sum % 2 === 0;
+  const win = sum % 2 === 0 && sum !== 2;   // par, pero el 2 (doble uno) revienta la racha
   if (win) {
     d.stake *= 2;
     d.step++;
@@ -1253,7 +1281,7 @@ function casinoDoubleRoll(ctx: Ctx, p: Player) {
       c.double = null;
     }
   } else {
-    emit(ctx, 'casino_double', `${p.name} tiró ${r.dice[0]} + ${r.dice[1]} (impar): perdió ${fmt(d.stake)}.`, p.id, { dice: r.dice, win: false, stake: d.stake, step: d.step });
+    emit(ctx, 'casino_double', `${p.name} tiró ${r.dice[0]} + ${r.dice[1]} (${sum === 2 ? '¡doble uno!' : 'impar'}): perdió ${fmt(d.stake)}.`, p.id, { dice: r.dice, win: false, stake: d.stake, step: d.step });
     casinoLoss(ctx, d.stake);
     c.double = null;
   }
@@ -1269,6 +1297,21 @@ function casinoCashout(ctx: Ctx, playerId: string) {
 }
 
 /** Entero uniforme en [0, n) usando la semilla de la partida. */
+/**
+ * Elige un índice al azar de un catálogo evitando los ya usados en esta partida.
+ * Cuando se agotan todos, la lista se reinicia (y vuelve a empezar sin repetir).
+ */
+function pickUnused(ctx: Ctx, key: string, total: number): number {
+  const s = ctx.s;
+  if (!s.usedContent) s.usedContent = {};
+  let used = s.usedContent[key];
+  if (!used || used.length >= total) { used = []; s.usedContent[key] = used; }
+  let idx = nextRandomInt(ctx, total);
+  for (let i = 0; i < total && used.includes(idx); i++) idx = (idx + 1) % total;
+  used.push(idx);
+  return idx;
+}
+
 function nextRandomInt(ctx: Ctx, n: number): number {
   const r = nextRandom(ctx.s.seed);
   ctx.s.seed = r.seed;
@@ -1368,10 +1411,7 @@ function beginChallenge(ctx: Ctx) {
 
 function nextTriviaQuestion(ctx: Ctx) {
   const c = ctx.s.challenge!;
-  const used = c.secret.used!;
-  let idx = nextRandomInt(ctx, TRIVIA.length);
-  for (let i = 0; i < TRIVIA.length && used.includes(idx); i++) idx = (idx + 1) % TRIVIA.length;
-  used.push(idx);
+  const idx = pickUnused(ctx, 'trivia', TRIVIA.length);   // sin repetir en toda la partida
   const t = TRIVIA[idx];
   c.data.question = { q: t.q, options: [...t.options] };
   c.data.answered = {};
@@ -1465,6 +1505,25 @@ function finishChallenge(ctx: Ctx, winnerId: string | null, reason: string) {
   c.status = 'done';
   c.data.winnerId = winnerId;
   c.data.reason = reason;
+  // Desafío nacido de un alquiler a doble o nada: se resuelve el alquiler, no una apuesta
+  if (c.rent) {
+    const r = c.rent;
+    const payer = player(s, r.payerId), owner = player(s, r.ownerId);
+    const name = tile(r.tileId).name;
+    s.challenge = null;
+    s.turnPhase = c.returnPhase;
+    if (winnerId === r.payerId) {
+      payer.stats.donWins++;
+      emit(ctx, 'rent_don_roll', `🎉 ${payer.name} ganó el doble o nada (${reason}) y no paga nada en ${name}.`, r.payerId, { win: true, amount: r.rent, to: r.ownerId, kind: c.kind });
+      return finishResolution(ctx);
+    }
+    if (!winnerId) {
+      emit(ctx, 'rent_don_roll', `Empate en el doble o nada: ${payer.name} paga el alquiler normal.`, r.payerId, { win: false, amount: r.rent, to: r.ownerId, tie: true });
+      return payRent(ctx, payer, owner, r.rent, name);
+    }
+    emit(ctx, 'rent_don_roll', `💸 ${owner.name} ganó el doble o nada (${reason}): ${payer.name} paga ${fmt(r.rent * 2)}.`, r.payerId, { win: false, amount: r.rent * 2, to: r.ownerId, kind: c.kind });
+    return payRent(ctx, payer, owner, r.rent * 2, `${name} (doble o nada)`);
+  }
   if (winnerId) {
     const loserId = winnerId === c.fromId ? c.toId! : c.fromId;
     const winner = player(s, winnerId), loser = player(s, loserId);
@@ -1683,10 +1742,11 @@ function arenaSetup(ctx: Ctx) {
     case 'trivia': { sec.used = []; d.qIndex = 0; arenaNextTrivia(ctx); return; }
     case 'cana': { d.taps = Object.fromEntries(a.players.map(id => [id, 0])); d.duration = 5000; return; }
     case 'barra': { d.attempts = Object.fromEntries(a.players.map(id => [id, [] as number[]])); return; }
-    case 'cuantos': { const q = CUANTOS[nextRandomInt(ctx, CUANTOS.length)]; d.q = q.q; d.unit = q.unit ?? ''; sec.answer = q.a; d.answers = {}; return; }
+    case 'cuantos': { const q = CUANTOS[pickUnused(ctx, 'cuantos', CUANTOS.length)]; d.q = q.q; d.unit = q.unit ?? ''; sec.answer = q.a; d.answers = {}; return; }
     case 'bomba': {
-      d.lives = Object.fromEntries(a.players.map(id => [id, 2])); d.turnIdx = 0; d.turn = a.alive[0]; d.used = []; d.level = 0;
-      arenaNewSyllable(ctx); sec.fuse = 5000 + nextRandomInt(ctx, 10000); d.turnStartedAt = a.startedAt; return;
+      d.lives = Object.fromEntries(a.players.map(id => [id, 1]));   // una sola vida: el primer boom te deja afuera
+      d.turnIdx = 0; d.turn = a.alive[0]; d.used = []; d.level = 0;
+      arenaNewSyllable(ctx); sec.fuse = bombFuse(ctx, 0); d.turnStartedAt = a.startedAt; return;
     }
     case 'oeste': { d.go = false; d.shots = {}; d.jammed = []; d.roundStartedAt = a.startedAt; return; }
     case 'rayo': { d.gridSize = 3; d.picks = {}; d.hits = null; d.roundStartedAt = a.startedAt; return; }
@@ -1712,7 +1772,8 @@ function arenaSetup(ctx: Ctx) {
     case 'cartas': {
       d.round = 1; d.rounds = 3; d.judgeIdx = 0; d.stage = 'pick'; d.played = []; d.pickedIds = []; d.lastWin = null; d.stageAt = a.startedAt;
       const deck = shuffle(WHITE_CARDS.map((_, i) => i), s.seed); s.seed = deck.seed;
-      const blacks = shuffle(BLACK_CARDS.map((_, i) => i), s.seed); s.seed = blacks.seed;
+      const blacks = { items: [] as number[] };
+      for (let i = 0; i < 6; i++) blacks.items.push(pickUnused(ctx, 'black', BLACK_CARDS.length));
       sec.deck = deck.items; sec.blacks = blacks.items; sec.hands = {}; sec.plays = {}; sec.playedIds = [];
       for (const id of a.players) (sec.hands as Record<string, number[]>)[id] = (sec.deck as number[]).splice(0, 6);
       cartasNewRound(ctx);
@@ -1735,17 +1796,14 @@ function arenaSetup(ctx: Ctx) {
     case 'dibujo': {
       const trig = player(s, a.triggeredBy);
       d.drawer = trig.isBot ? (a.players.find(id => !player(s, id).isBot) ?? a.triggeredBy) : a.triggeredBy;
-      const w = DRAW_WORDS[nextRandomInt(ctx, DRAW_WORDS.length)]; sec.word = w; d.hint = w.replace(/[^ ]/g, '_'); d.guesses = []; return;
+      const w = DRAW_WORDS[pickUnused(ctx, 'draw', DRAW_WORDS.length)]; sec.word = w; d.hint = w.replace(/[^ ]/g, '_'); d.guesses = []; return;
     }
   }
 }
 
 function arenaNextTrivia(ctx: Ctx) {
   const a = ctx.s.arena!;
-  const used = a.secret.used as number[];
-  let idx = nextRandomInt(ctx, TRIVIA.length);
-  for (let i = 0; i < TRIVIA.length && used.includes(idx); i++) idx = (idx + 1) % TRIVIA.length;
-  used.push(idx);
+  const idx = pickUnused(ctx, 'trivia', TRIVIA.length);
   const t = TRIVIA[idx];
   a.data.question = { q: t.q, options: [...t.options] };
   a.data.answered = {};
@@ -1759,7 +1817,7 @@ function arenaNewSyllable(ctx: Ctx) {
   const a = ctx.s.arena!;
   const level = Math.min(2, Math.floor(((a.data.used as string[]).length) / 6));
   const pool = level === 0 ? BOMB_SYLLABLES.facil : level === 1 ? BOMB_SYLLABLES.medio : BOMB_SYLLABLES.dificil;
-  a.data.syllable = pool[nextRandomInt(ctx, pool.length)];
+  a.data.syllable = pool[pickUnused(ctx, `bomba${level}`, pool.length)];
   a.data.level = level;
 }
 
@@ -2043,11 +2101,18 @@ function arenaTriviaAdvance(ctx: Ctx) {
   arenaNextTrivia(ctx);
 }
 
+/** Mecha de la Palabra bomba: arranca en 5-9 s y se acorta con cada palabra, hasta 2 s. */
+function bombFuse(ctx: Ctx, wordsPlayed: number): number {
+  const base = Math.max(2000, 9000 - wordsPlayed * 450);
+  const min = Math.max(1800, base - 4000);
+  return min + nextRandomInt(ctx, Math.max(1, base - min));
+}
+
 function arenaBombNext(ctx: Ctx, now: number) {
   const a = ctx.s.arena!;
   const d = a.data;
   arenaNewSyllable(ctx);
-  a.secret.fuse = 4000 + nextRandomInt(ctx, 9000);
+  a.secret.fuse = bombFuse(ctx, (d.used as string[]).length);
   d.turnStartedAt = now;
   const order = a.alive;
   const i = order.indexOf(d.turn as string);
@@ -2144,8 +2209,8 @@ function cartasNewRound(ctx: Ctx) {
   const a = ctx.s.arena!;
   const d = a.data, sec = a.secret;
   d.judge = a.players[((d.judgeIdx as number)) % a.players.length];
-  const blacks = sec.blacks as number[];
-  d.black = BLACK_CARDS[blacks.shift() ?? 0];
+  void sec.blacks;
+  d.black = BLACK_CARDS[pickUnused(ctx, 'black', BLACK_CARDS.length)];
   d.stage = 'pick'; d.played = []; d.pickedIds = []; sec.plays = {}; sec.playedIds = [];
 }
 function cartasToJudge(ctx: Ctx, now: number) {
@@ -2172,11 +2237,7 @@ export const BORROSA_ROUND_MS = 14000, BORROSA_REVEAL_MS = 3000;
 function borrosaNext(ctx: Ctx) {
   const a = ctx.s.arena!;
   const d = a.data, sec = a.secret;
-  const used = sec.used as number[];
-  let idx = nextRandomInt(ctx, BLURRY.length);
-  for (let i = 0; i < BLURRY.length && used.includes(idx); i++) idx = (idx + 1) % BLURRY.length;
-  used.push(idx);
-  const item = BLURRY[idx];
+  const item = BLURRY[pickUnused(ctx, 'blurry', BLURRY.length)];
   const opts = shuffle([...item.options], ctx.s.seed); ctx.s.seed = opts.seed;
   d.emoji = item.emoji; d.options = opts.items; sec.answer = opts.items.indexOf(item.answer);
   d.answered = {}; d.reveal = null; d.roundStartedAt = null; d.winner = null;
@@ -2200,11 +2261,7 @@ export const CADENA_ROUND_MS = 25000, CADENA_REVEAL_MS = 4000;
 function cadenaNext(ctx: Ctx) {
   const a = ctx.s.arena!;
   const d = a.data, sec = a.secret;
-  const used = sec.used as number[];
-  let idx = nextRandomInt(ctx, CHAINS.length);
-  for (let i = 0; i < CHAINS.length && used.includes(idx); i++) idx = (idx + 1) % CHAINS.length;
-  used.push(idx);
-  const ch = CHAINS[idx];
+  const ch = CHAINS[pickUnused(ctx, 'chains', CHAINS.length)];
   const sh = shuffle(ch.items.map((_, i) => i), ctx.s.seed); ctx.s.seed = sh.seed;
   d.title = ch.title; d.shown = sh.items.map(i => ch.items[i]);           // orden mezclado que ve la gente
   sec.correct = ch.items.map(it => (d.shown as string[]).indexOf(it));     // índices de d.shown en el orden correcto
@@ -2318,7 +2375,7 @@ function arenaTick(ctx: Ctx, now: number) {
         if (lives[victim] <= 0) arenaEliminate(ctx, victim);
         if (a.alive.length <= 1) return arenaFinish(ctx);
         // siguiente jugador vivo
-        if (!a.alive.includes(victim)) { d.turn = a.alive[0]; arenaNewSyllable(ctx); a.secret.fuse = 4000 + nextRandomInt(ctx, 9000); d.turnStartedAt = now; }
+        if (!a.alive.includes(victim)) { d.turn = a.alive[0]; arenaNewSyllable(ctx); a.secret.fuse = bombFuse(ctx, (d.used as string[]).length); d.turnStartedAt = now; }
         else arenaBombNext(ctx, now);
       }
       if (elapsed >= 180000) arenaFinish(ctx);
@@ -2765,6 +2822,7 @@ export function applyAction(state: GameState, action: Action): { state: GameStat
     case 'RENT_DON_PROPOSE': rentDonPropose(ctx, action.playerId); break;
     case 'RENT_DON_ACCEPT': rentDonAnswer(ctx, action.playerId, true); break;
     case 'RENT_DON_REJECT': rentDonAnswer(ctx, action.playerId, false); break;
+    case 'RENT_DON_ROLL': rentDonRoll(ctx, action.playerId); break;
     case 'CHALLENGE_PROPOSE': challengePropose(ctx, action.playerId, action.toId, action.kind, action.amount); break;
     case 'CHALLENGE_ACCEPT': challengeAnswer(ctx, action.playerId, true); break;
     case 'CHALLENGE_REJECT': challengeAnswer(ctx, action.playerId, false); break;
@@ -2818,7 +2876,8 @@ export function legalActions(state: GameState, playerId: string): Set<Action['ty
   if (ph === 'RENT_OFFER' && state.rentOffer) {
     const o = state.rentOffer;
     if (o.payerId === playerId && !o.proposed) { out.add('RENT_PAY'); out.add('RENT_DON_PROPOSE'); }
-    if (o.ownerId === playerId && o.proposed) { out.add('RENT_DON_ACCEPT'); out.add('RENT_DON_REJECT'); }
+    if (o.ownerId === playerId && o.proposed && !o.accepted) { out.add('RENT_DON_ACCEPT'); out.add('RENT_DON_REJECT'); }
+    if (o.payerId === playerId && o.accepted) out.add('RENT_DON_ROLL');
   }
   if (ph === 'ARENA' && state.arena) {
     const a = state.arena;

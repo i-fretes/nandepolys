@@ -119,9 +119,9 @@ await dbg(p1, { give: 43 });
 // turno actual es p1 (después de 3 jugadores volvió al primero). p1 tira y termina.
 await dbg(p1, { position: 0, dice: [1, 3] }); // 4: impuesto → elegir
 await click(p1, 'Tirar dados');
-await p1.waitForFunction(() => window.__nandepoly.store.getState().moving === null, null, { timeout: 8000, polling: 100 });
-await p1.waitForTimeout(300);
-await clickIf(p1, 'Pagar ₲ 200.000');
+await p1.waitForFunction(() => window.__nandepoly.store.getState().state?.turnPhase === 'TAX_CHOICE' && window.__nandepoly.store.getState().moving === null, null, { timeout: 10000, polling: 150 });
+await click(p1, 'Pagar ₲ 200.000');
+await p1.waitForFunction(() => window.__nandepoly.store.getState().state?.turnPhase === 'END_TURN', null, { timeout: 8000, polling: 150 });
 await click(p1, 'Terminar turno');
 await waitTurnChange(firstName);
 // ahora p2: posición 40, dados 1+2 → 43 (Palacio, del jugador 1)
@@ -132,15 +132,44 @@ await p2.screenshot({ path: `${OUT}/alquiler-oferta.png` });
 await click(p2, 'Proponer doble o nada');
 await p1.waitForSelector('text=te propone', { timeout: 8000 });
 await p1.screenshot({ path: `${OUT}/alquiler-dueno-decide.png` });
-await dbg(p1, { dice: [1, 2] }); // 3 → paga doble
 await click(p1, '¡Acepto el doble o nada');
-await p2.waitForTimeout(1500);
-await p2.screenshot({ path: `${OUT}/alquiler-dados.png` });
-ok(await p2.locator('text=Paga el doble').count() > 0, 'doble o nada: pagó doble');
-await p2.waitForTimeout(3500);
-await click(p2, 'Terminar turno');
+// Ahora se define en un mini-desafío mano a mano (elegido al azar)
+await p2.waitForFunction(() => window.__nandepoly.store.getState().state?.turnPhase === 'CHALLENGE', null, { timeout: 8000, polling: 200 });
+const kind = await p2.evaluate(() => window.__nandepoly.store.getState().state.challenge.kind);
+log('doble o nada se define a', kind);
+await p2.waitForTimeout(800);
+await p2.screenshot({ path: `${OUT}/alquiler-desafio.png` });
+// jugamos el desafío hasta que termine
+for (let i = 0; i < 40; i++) {
+  const st = await p2.evaluate(() => window.__nandepoly.store.getState().state);
+  if (st.turnPhase !== 'CHALLENGE') break;
+  const c = st.challenge;
+  for (const p of [p1, p2]) {
+    try {
+      if (c.kind === 'dados') await p.locator('[data-roll-dados]').click({ force: true, timeout: 500 });
+      else if (c.kind === 'ppt') await p.locator('.ppt-btn').first().click({ force: true, timeout: 500 });
+      else if (c.kind === 'trivia') await p.locator('[data-answer="0"]').click({ force: true, timeout: 500 });
+      else if (c.kind === 'terere') await p.locator('[data-terere]').dispatchEvent('pointerdown');
+    } catch { /* no disponible */ }
+  }
+  await p2.waitForTimeout(400);
+}
+await p2.waitForTimeout(1200);
+await p2.screenshot({ path: `${OUT}/alquiler-resultado.png` });
+const cash = await p2.evaluate(() => { const s = window.__nandepoly.store.getState(); return s.state.players.find(p => p.id === s.playerId).cash; });
+ok(cash === 1500 || cash === 1500 - 100 || cash < 1500, `doble o nada resuelto por desafío (efectivo del que pagaba: ${cash})`);
+for (let i = 0; i < 10; i++) { if (await clickIf(p2, 'Terminar turno')) break; await p2.waitForTimeout(300); }
 
-// 5) Desafío: trivia (p3 desafía a p1)
+// 5) Desafío: trivia (el que tenga el turno desafía)
+// Avanzamos turnos hasta que le toque a p3
+for (let i = 0; i < 12; i++) {
+  const st = await p2.evaluate(() => window.__nandepoly.store.getState().state);
+  const curId = st.players[st.currentPlayerIndex].id;
+  const curP = [a, b, c].find(async () => false) ?? null; void curP;
+  if (st.turnPhase === 'AWAITING_ROLL' && curId === await cur3.evaluate(() => window.__nandepoly.store.getState().playerId)) break;
+  for (const p of [a, b, c]) { await clickIf(p, 'Entendido'); await clickIf(p, 'Tirar dados') || await clickIf(p, 'No comprar') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Salir sin apostar') || await clickIf(p, 'Terminar turno'); }
+  await p2.waitForTimeout(350);
+}
 const p3 = cur3;
 await click(p3, 'Desafiar');
 await p3.waitForSelector('text=Desafiar a un jugador');

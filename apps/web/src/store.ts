@@ -28,6 +28,7 @@ interface Store {
   turnDeadline: number | null;
   phaseDeadline: number | null;
   cardModal: { card: Card; playerId: string } | null;
+  cardQueue: { card: Card; playerId: string }[];   // cartas en espera: se muestran una por una, sin pisarse
   rollingUntil: number;
   selectedTile: number | null;
   dialog: 'manage' | 'trade' | 'challenge' | 'duel' | 'missions' | null;
@@ -103,6 +104,7 @@ export const useStore = create<Store>((set, get) => ({
   turnDeadline: null,
   phaseDeadline: null,
   cardModal: null,
+  cardQueue: [],
   rollingUntil: 0,
   selectedTile: null,
   dialog: null,
@@ -265,7 +267,12 @@ export const useStore = create<Store>((set, get) => ({
           if (e.type === 'duel_rejected' && amt > 0) { push({ kind: 'money', from: e.playerId!, to: to!, amount: amt }); }
         }
         if (e.type === 'roll') { patch.rollingUntil = Date.now() + 600; sfx.dice(); }
-        if (e.type === 'card' && view.state.lastCard) { patch.cardModal = view.state.lastCard; sfx.card(); }
+        if (e.type === 'card' && view.state.lastCard) {
+          // Si ya hay una carta en pantalla, la nueva espera su turno (no se pisan)
+          const card = view.state.lastCard;
+          if (get().cardModal || patch.cardModal) patch.cardQueue = [...(patch.cardQueue ?? get().cardQueue), card].slice(-6);
+          else { patch.cardModal = card; sfx.card(); }
+        }
         if (e.type === 'trade_proposed' && view.state.pendingTrade?.toId === me) { toast('Te propusieron un intercambio', { icon: '🤝' }); sfx.notify(); }
         if ((e.type === 'rent' || e.type === 'debt_paid') && e.data?.to === me) { toast.success(e.text); sfx.coin(); }
         if ((e.type === 'rent' || e.type === 'tax' || e.type === 'expense') && e.playerId === me) sfx.pay();
@@ -307,12 +314,17 @@ export const useStore = create<Store>((set, get) => ({
 
   leaveRoom: () => set({
     roomCode: null, playerId: null, playerToken: null, spectator: false, state: null, chat: [], events: [],
-    auctionDeadline: null, turnDeadline: null, phaseDeadline: null, cardModal: null, selectedTile: null, dialog: null,
+    auctionDeadline: null, turnDeadline: null, phaseDeadline: null, cardModal: null, cardQueue: [], selectedTile: null, dialog: null,
     fx: [], streak: {}, highlightGroup: null, lastCasino: null, lastDon: null, challengeEvents: [],
     arenaEvents: [], duelEvents: [], liveFeed: [], drafting: {}, lootbox: null, eventSpin: null, lastDuelResult: null,
   }),
 
-  setCardModal: v => set({ cardModal: v }),
+  setCardModal: v => set(s => {
+    if (v) return { cardModal: v };
+    const [next, ...rest] = s.cardQueue;      // al cerrar una, entra la siguiente de la cola
+    if (next) sfx.card();
+    return { cardModal: next ?? null, cardQueue: rest };
+  }),
   setSelectedTile: id => set({ selectedTile: id }),
   setDialog: d => set({ dialog: d }),
   setActiveTab: t => set({ activeTab: t, unreadChat: t === 'chat' ? 0 : get().unreadChat }),

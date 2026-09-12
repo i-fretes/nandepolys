@@ -8,7 +8,7 @@ import { Server as IOServer, type Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import {
   MAX_PLAYERS, PLAYER_COLORS, RuleError, addPlayer, applyAction, rematch, removePlayer, rollDice, toClientState,
-  updateSettings, type Action, type GameEvent, type GameState, type TokenId,
+  updateSettings, type Action, type GameEvent, type GameState, type TokenId, type TurnPhase,
 } from '@nandepoly/engine';
 import { ActionSchema, ChatSchema, CreateRoomSchema, DraftingSchema, JoinRoomSchema, RejoinSchema, SettingsSchema, StrokeSchema } from './protocol';
 import { RoomManager, type Room } from './rooms';
@@ -163,9 +163,13 @@ function afterStateChange(room: Room, before: GameState) {
     }, AUCTION_SECONDS * 1000);
   }
 
-  // Temporizador de turno (regla casera)
-  const turnChanged = before.turnNumber !== s.turnNumber || before.phase !== s.phase;
-  if (s.phase === 'PLAYING' && s.settings.turnTimerSeconds > 0) {
+  // Temporizador de turno (regla casera). Solo corre mientras el jugador tiene que decidir algo
+  // de su turno (tirar, comprar, impuesto, deuda, terminar). En mini-juegos, casino, subastas,
+  // desafíos y duelos se pausa: esos tienen sus propios tiempos y no deben cortar la partida.
+  const TURN_TIMER_PHASES: TurnPhase[] = ['AWAITING_ROLL', 'AWAITING_BUY', 'TAX_CHOICE', 'DEBT', 'END_TURN'];
+  const timedPhase = TURN_TIMER_PHASES.includes(s.turnPhase);
+  const turnChanged = before.turnNumber !== s.turnNumber || before.phase !== s.phase || timedPhase !== TURN_TIMER_PHASES.includes(before.turnPhase);
+  if (s.phase === 'PLAYING' && s.settings.turnTimerSeconds > 0 && timedPhase) {
     if (turnChanged || !t.turn) {
       if (t.turn) clearTimeout(t.turn);
       room.turnDeadline = Date.now() + s.settings.turnTimerSeconds * 1000;

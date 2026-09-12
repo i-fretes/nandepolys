@@ -50,7 +50,7 @@ describe('casino', () => {
     expect(() => act(r.state, { type: 'CASINO_PLAY', playerId: a, game: 'ruleta', amount: 100 })).toThrow('Una apuesta');
   });
 
-  it('ruleta: en muchas tiradas gana cerca del 49 %', () => {
+  it('ruleta: la banca tiene ventaja (se gana cerca del 43 %)', () => {
     let wins = 0;
     const N = 3000;
     const base = casinoGame(2);
@@ -59,8 +59,8 @@ describe('casino', () => {
       const r = act(s, { type: 'CASINO_PLAY', playerId: s.players[0].id, game: 'ruleta', amount: 50 });
       if (r.events.find(e => e.type === 'casino_result')!.data!.win) wins++;
     }
-    expect(wins / N).toBeGreaterThan(0.44);
-    expect(wins / N).toBeLessThan(0.54);
+    expect(wins / N).toBeGreaterThan(0.39);
+    expect(wins / N).toBeLessThan(0.47);   // siempre por debajo del 50 %: a la larga gana la casa
   });
 
   it('quiniela paga según el número; carrera devuelve la pista completa y paga 5 a 1', () => {
@@ -142,7 +142,7 @@ describe('alquiler a doble o nada', () => {
     expect(r.state.turnPhase).toBe('END_TURN');
   });
 
-  it('proponer → dueño rechaza → paga normal; dueño acepta → 7+ no paga, 6- paga doble', () => {
+  it('proponer → dueño rechaza → paga normal; dueño acepta → se define en un mini-desafío', () => {
     const { s, a, b } = landOnRival();
     let r = act(s, { type: 'RENT_DON_PROPOSE', playerId: a });
     expect(r.state.rentOffer?.proposed).toBe(true);
@@ -150,12 +150,47 @@ describe('alquiler a doble o nada', () => {
     const rej = act(r.state, { type: 'RENT_DON_REJECT', playerId: b });
     expect(rej.state.players[0].cash).toBe(1488);
 
-    const hi = act({ ...r.state, seed: seedFor([4, 5]) }, { type: 'RENT_DON_ACCEPT', playerId: b });
-    expect(hi.state.players[0].cash).toBe(1500);
-    expect(hi.state.turnPhase).toBe('END_TURN');
-    const lo = act({ ...r.state, seed: seedFor([1, 2]) }, { type: 'RENT_DON_ACCEPT', playerId: b });
-    expect(lo.state.players[0].cash).toBe(1500 - 24);
-    expect(lo.state.players[1].cash).toBe(1500 + 24);
+    // Aceptar abre un desafío mano a mano entre el que paga y el dueño (sin apuesta propia)
+    const acc = act(r.state, { type: 'RENT_DON_ACCEPT', playerId: b });
+    expect(acc.state.rentOffer).toBeNull();
+    expect(acc.state.turnPhase).toBe('CHALLENGE');
+    const ch = acc.state.challenge!;
+    expect(ch.status).toBe('playing');
+    expect(ch.forced).toBe(true);
+    expect(ch.amount).toBe(0);
+    expect([ch.fromId, ch.toId]).toEqual([a, b]);
+    expect(ch.rent).toEqual({ payerId: a, ownerId: b, tileId: 7, rent: 12 });
+
+    // Jugamos el desafío hasta el final con piedra-papel-tijera forzado
+    const ppt = structuredClone(acc.state);
+    ppt.challenge!.kind = 'ppt';
+    ppt.challenge!.data = { rounds: [], score: { [a]: 0, [b]: 0 }, chosen: [] };
+    ppt.challenge!.secret = { choices: {} };
+    // el que paga gana 2 a 0 → no paga nada
+    let win = { state: ppt } as ReturnType<typeof act>;
+    for (let i = 0; i < 2; i++) {
+      win = act(win.state, { type: 'CHALLENGE_MOVE', playerId: a, choice: 'piedra' });
+      win = act(win.state, { type: 'CHALLENGE_MOVE', playerId: b, choice: 'tijera' });
+    }
+    expect(win.state.challenge).toBeNull();
+    expect(win.state.players[0].cash).toBe(1500);          // no pagó nada
+    expect(win.state.players[1].cash).toBe(1500);
+    expect(win.state.turnPhase).toBe('END_TURN');
+    expect(win.events.some(e => e.type === 'rent_don_roll' && e.data?.win === true)).toBe(true);
+
+    // el dueño gana 2 a 0 → paga el doble
+    let lose = { state: structuredClone(ppt) } as ReturnType<typeof act>;
+    for (let i = 0; i < 2; i++) {
+      lose = act(lose.state, { type: 'CHALLENGE_MOVE', playerId: a, choice: 'tijera' });
+      lose = act(lose.state, { type: 'CHALLENGE_MOVE', playerId: b, choice: 'piedra' });
+    }
+    expect(lose.state.players[0].cash).toBe(1500 - 24);
+    expect(lose.state.players[1].cash).toBe(1500 + 24);
+
+    // si se cuelga el desafío, el anfitrión lo cancela y se paga el alquiler normal
+    const forced = act(acc.state, { type: 'FORCE_END_TURN', playerId: s.hostId });
+    expect(forced.state.challenge).toBeNull();
+    expect(forced.state.rentOffer).toBeNull();
   });
 });
 

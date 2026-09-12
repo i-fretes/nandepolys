@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { challengeName, type ChallengeKind, type PptChoice } from '@nandepoly/engine';
+import { challengeName, tile, type ChallengeKind, type PptChoice } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { money, tokenEmoji } from '../format';
 import { sfx } from '../sound';
@@ -84,7 +84,11 @@ export default function ChallengeDialog() {
         <div className="vs-splash text-2xl font-black text-py-red">VS</div>
         <Side name={to?.name ?? '?'} emoji={emoji(to?.id)} color={to?.color ?? '#999'} />
       </div>
-      <div className="mt-1 text-center text-sm text-ink/60">Se juega por <b>{money(c.amount)}</b>{c.forced ? ' · por carta, no se puede rechazar' : ''}</div>
+      <div className="mt-1 text-center text-sm text-ink/60">
+        {c.rent
+          ? <>💵 <b>Doble o nada</b> del alquiler de {tile(c.rent.tileId).name}: si gana <b>{name(c.rent.payerId)}</b> no paga nada; si gana <b>{name(c.rent.ownerId)}</b> cobra <b>{money(c.rent.rent * 2)}</b>. Empate: se paga {money(c.rent.rent)}.</>
+          : <>Se juega por <b>{money(c.amount)}</b>{c.forced ? ' · por carta, no se puede rechazar' : ''}</>}
+      </div>
 
       {c.status === 'pending' && (
         me === c.toId ? (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CARRETA_PAYOUT, DOUBLE_MAX_STEPS, QUINIELA_PAYOUT } from '@nandepoly/engine';
+import { CARRETA_PAYOUT, DOUBLE_MAX_STEPS, QUINIELA_PAYOUT, RULETA_WIN_CHANCE } from '@nandepoly/engine';
 import { useMoving, useStore } from '../store';
 import { money } from '../format';
 import { sfx } from '../sound';
@@ -8,7 +8,7 @@ import { Die3D } from './Dice';
 
 type Game = 'ruleta' | 'quiniela' | 'doble' | 'carrera';
 const GAMES: { id: Game; name: string; icon: string; desc: string }[] = [
-  { id: 'ruleta', name: 'Ruleta', icon: '🎡', desc: '49 % ganás lo apostado · 51 % lo perdés' },
+  { id: 'ruleta', name: 'Ruleta', icon: '🎡', desc: `${RULETA_WIN_CHANCE} % ganás lo apostado · ${100 - RULETA_WIN_CHANCE} % lo perdés (la banca tiene ventaja)` },
   { id: 'quiniela', name: 'Quiniela', icon: '🎟️', desc: 'Elegí la suma de los dados. El 7 paga 5 veces, el 2 y el 12 pagan 30.' },
   { id: 'doble', name: 'Doble o nada', icon: '🪙', desc: 'Par dobla, impar perdés todo. Retirate cuando quieras, hasta 4 pasos (×16).' },
   { id: 'carrera', name: 'Carrera de carretas', icon: '🛺', desc: 'Seis carretas, elegí una. Paga 5 a 1.' },
@@ -160,14 +160,14 @@ function Ruleta({ result }: { result: Record<string, unknown> | null }) {
         <div className="reel-marker" />
         <div className="reel-strip" style={{ transform: `translateX(${offset}px)`, transition: offset ? 'transform 3.6s cubic-bezier(.08,.6,.1,1)' : 'none' }}>
           {list.map((n, i) => (
-            <div key={i} className={`reel-cell ${n <= 49 ? 'win' : 'lose'}`}>
-              <div className="text-center">{n}<br /><small>{n <= 49 ? 'GANÁS' : 'PERDÉS'}</small></div>
+            <div key={i} className={`reel-cell ${n <= RULETA_WIN_CHANCE ? 'win' : 'lose'}`}>
+              <div className="text-center">{n}<br /><small>{n <= RULETA_WIN_CHANCE ? 'GANÁS' : 'PERDÉS'}</small></div>
             </div>
           ))}
         </div>
       </div>
       <div className="mt-2 h-8 text-center text-lg font-black">
-        {roll === null ? <span className="opacity-60">Del 1 al 49 ganás · del 50 al 100 perdés</span>
+        {roll === null ? <span className="opacity-60">Del 1 al {RULETA_WIN_CHANCE} ganás · del {RULETA_WIN_CHANCE + 1} al 100 perdés</span>
           : done ? <span className={`reveal inline-block ${result?.win ? 'text-green-300' : 'text-red-300'}`}>{result?.win ? `¡Salió ${roll}! Ganaste ${money(result!.amount as number)}` : `Salió ${roll}. Perdiste ${money(result!.amount as number)}`}</span>
           : <span className="opacity-60">Girando…</span>}
       </div>

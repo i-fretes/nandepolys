@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { tile } from '@nandepoly/engine';
+import { challengeName, tile, type ChallengeKind } from '@nandepoly/engine';
 import { useMoving, useStore } from '../store';
 import { money, tokenEmoji } from '../format';
 import { sfx } from '../sound';
 import Modal from './Modal';
 import { Die3D } from './Dice';
 
-/** Alquiler a doble o nada: el que paga propone, el dueño decide, los dados deciden. */
+/** Alquiler a doble o nada: el que paga propone, el dueño decide y lo definen en un mini-desafío. */
 export default function RentOfferDialog() {
   const state = useStore(s => s.state)!;
   const me = useStore(s => s.playerId);
@@ -33,21 +33,24 @@ export default function RentOfferDialog() {
   const secs = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
 
   if (show && lastDon) {
-    const d = lastDon.data as { dice: [number, number]; win: boolean; amount: number };
+    const d = lastDon.data as { dice?: [number, number]; win: boolean; amount: number; tie?: boolean; kind?: ChallengeKind };
     const payer = state.players.find(p => p.id === lastDon.data.playerId) ?? null;
     return (
       <Modal open width="max-w-md">
         <div className="text-center">
           <h2 className="text-xl font-black">🎲 Doble o nada</h2>
-          <div className="my-5 flex justify-center gap-4">
-            <Die3D value={d.dice[0]} rolling={show.rolling} size="72px" />
-            <Die3D value={d.dice[1]} rolling={show.rolling} size="72px" />
-          </div>
+          {d.dice ? (
+            <div className="my-5 flex justify-center gap-4">
+              <Die3D value={d.dice[0]} rolling={show.rolling} size="72px" />
+              <Die3D value={d.dice[1]} rolling={show.rolling} size="72px" />
+            </div>
+          ) : <div className="my-5 text-6xl">{d.win ? '🎉' : d.tie ? '🤝' : '💸'}</div>}
           {!show.rolling && (
-            <div className={`reveal text-2xl font-black ${d.win ? 'text-emerald-600' : 'text-red-600'}`}>
-              {d.dice[0] + d.dice[1]}: {d.win ? '¡7 o más! No paga nada.' : `6 o menos. Paga el doble: ${money(d.amount)}`}
+            <div className={`reveal text-2xl font-black ${d.win ? 'text-emerald-600' : d.tie ? 'text-ink' : 'text-red-600'}`}>
+              {d.win ? '¡Ganó el doble o nada! No paga nada.' : d.tie ? 'Empate: paga el alquiler normal.' : `Perdió: paga el doble, ${money(d.amount)}`}
             </div>
           )}
+          {d.kind && <div className="mt-1 text-xs text-ink/50">Se definió a {challengeName(d.kind)}</div>}
           {payer && <div className="mt-1 text-sm text-ink/60">{payer.name}</div>}
         </div>
       </Modal>
@@ -79,8 +82,8 @@ export default function RentOfferDialog() {
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <button className="btn-ghost py-3" onClick={() => act({ type: 'RENT_PAY' })}>Pagar {money(o!.rent)}</button>
             <button className="btn-primary breathe py-3" onClick={() => act({ type: 'RENT_DON_PROPOSE' })}>
-              🎲 Proponer doble o nada
-              <span className="block text-xs font-normal opacity-90">7+ no pagás · 6- pagás {money(o!.rent * 2)}</span>
+              ⚔️ Proponer doble o nada
+              <span className="block text-xs font-normal opacity-90">se define en un mini-desafío · si perdés pagás {money(o!.rent * 2)}</span>
             </button>
           </div>
         ) : <p className="mt-5 text-center text-ink/60">{payer.name} decide si paga o propone doble o nada…</p>
@@ -89,8 +92,8 @@ export default function RentOfferDialog() {
       {o!.proposed && (
         iOwn ? (
           <div className="mt-5">
-            <p className="text-center font-semibold">{payer.name} te propone <b>doble o nada</b>: si saca 7 o más no te paga; si saca 6 o menos te paga <b>{money(o!.rent * 2)}</b>.</p>
-            <p className="mt-1 text-center text-xs text-ink/50">Probabilidad de que saque 7 o más: 58 %. Vos elegís.</p>
+            <p className="text-center font-semibold">{payer.name} te propone <b>doble o nada</b>: lo definen en un mini-desafío mano a mano (dados, piedra-papel-tijera, trivia o tereré, al azar). Si gana él no te paga nada; si ganás vos, te paga <b>{money(o!.rent * 2)}</b>.</p>
+            <p className="mt-1 text-center text-xs text-ink/50">Empate: te paga el alquiler normal. Vos elegís.</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <button className="btn-ghost py-3" onClick={() => act({ type: 'RENT_DON_REJECT' })}>No, que pague {money(o!.rent)}</button>
               <button className="btn-green breathe py-3" onClick={() => act({ type: 'RENT_DON_ACCEPT' })}>¡Acepto el doble o nada!</button>
