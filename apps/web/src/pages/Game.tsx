@@ -40,6 +40,9 @@ export default function Game() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [music, setMusicState] = useState(isMusicOn());
   const [focus, setFocus] = useState(false);   // pantalla completa: esconde los paneles y agranda el tablero
+  // Vista de mesa: el tablero inclinado con fichas y casas paradas (preferencia de cada uno, se guarda en el navegador)
+  const [tilt, setTilt] = useState(() => { try { return localStorage.getItem('nandepoly:tilt') === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('nandepoly:tilt', tilt ? '1' : '0'); } catch { /* sin storage */ } }, [tilt]);
   useEffect(() => { startMusic(); return () => stopMusic(); }, []);
   const me = state.players.find(p => p.id === playerId);
   const canAbandon = !!me && !me.bankrupt && state.phase === 'PLAYING';
@@ -64,7 +67,10 @@ export default function Game() {
         {!connected && (
           <div className="w-full rounded-xl bg-red-600 px-3 py-2 text-center text-sm font-semibold text-white">Sin conexión… intentando reconectar</div>
         )}
-        <div className="w-full" style={{ maxWidth: `min(100%, calc(100vh - ${focus ? 96 : 128}px))` }}>
+        {focus && (
+          <button className="focus-exit" title="Volver a mostrar los paneles" onClick={() => setFocus(false)}>🗗 Salir de pantalla completa</button>
+        )}
+        <div className={`board-wrap w-full ${tilt ? 'board-tilt' : ''}`} style={{ maxWidth: `min(100%, calc(100vh - ${focus ? 96 : 128}px))` }}>
           <Board />
         </div>
         <div className="w-full" style={{ maxWidth: `min(100%, calc(100vh - ${focus ? 96 : 128}px))` }}>
@@ -75,11 +81,12 @@ export default function Game() {
       {/* Panel lateral */}
       <aside className="side-panel order-2 flex flex-col gap-3 lg:order-3 lg:h-full lg:w-[320px] lg:shrink-0 lg:overflow-hidden xl:w-[344px]">
         <div className="relative flex items-center justify-between gap-2 rounded-2xl bg-white/70 px-3 py-2 text-sm">
-          <div>Sala <b className="tracking-widest text-py-red">{roomCode}</b></div>
-          <div className="flex items-center gap-2">
-            <button className="text-xs font-semibold text-py-blue hover:underline" onClick={() => setRulesOpen(true)}>📖 Reglas</button>
+          <div className="whitespace-nowrap">Sala <b className="tracking-widest text-py-red">{roomCode}</b></div>
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <button className="text-xs font-semibold text-py-blue hover:underline" title="Reglas" onClick={() => setRulesOpen(true)}>📖</button>
             <button className="text-sm text-ink/60 hover:text-ink" title={muted ? 'Activar sonido' : 'Silenciar todo'} onClick={() => { setMuted(!muted); setMutedState(!muted); }}>{muted ? '🔇' : '🔊'}</button>
             <button className={`text-sm hover:text-ink ${music ? 'text-ink/60' : 'text-ink/25'}`} title={music ? 'Apagar música de fondo' : 'Prender música de fondo'} onClick={() => { setMusicOn(!music); setMusicState(!music); }}>🎵</button>
+            <button className={`text-sm hover:text-ink ${tilt ? 'text-ink' : 'text-ink/50'}`} title={tilt ? 'Vista plana' : 'Vista de mesa: tablero inclinado con las fichas paradas'} onClick={() => setTilt(v => !v)}>🪑</button>
             <button className="text-sm text-ink/60 hover:text-ink" title={focus ? 'Volver a mostrar los paneles' : 'Pantalla completa: esconde los paneles y agranda el tablero'} onClick={() => setFocus(v => !v)}>{focus ? '🗗' : '⛶'}</button>
             <button className="btn-ghost btn-sm !px-2 !py-1 text-xs" onClick={() => setMenuOpen(v => !v)} aria-expanded={menuOpen}>☰ Más</button>
           </div>

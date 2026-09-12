@@ -13,6 +13,30 @@ body {
   overscroll-behavior: none;
 }
 
+/* ---------- Ambiente de mesa: marco de madera y luz ---------- */
+.board-wrap { position: relative; padding: 1.1%; border-radius: 1.6%; isolation: isolate;
+  background:
+    repeating-linear-gradient(92deg, rgba(255,255,255,.035) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(88deg, rgba(0,0,0,.06) 0 1px, transparent 1px 14px),
+    linear-gradient(160deg, #6b3f22, #4a2a14 55%, #3a1f0e);
+  box-shadow: 0 18px 40px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.08), inset 0 2px 14px rgba(0,0,0,.45); }
+.board-wrap::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+  background: radial-gradient(ellipse at 50% 35%, rgba(255,255,255,.10), rgba(0,0,0,0) 45%, rgba(0,0,0,.22) 100%); mix-blend-mode: multiply; }
+
+/* ---------- Vista de mesa: tablero inclinado, piezas paradas ---------- */
+.board-tilt { perspective: 1500px; perspective-origin: 50% 20%; padding: 0; background: transparent; box-shadow: none; }
+.board-tilt::after { display: none; }
+.board-tilt .board { transform: rotateX(30deg) scale(.94); transform-origin: 50% 50%; transform-style: preserve-3d; box-shadow: 0 2.4cqw 0 -0.2cqw #1f2a1f, 0 2.8cqw 0 0 #0d140d, 0 5cqw 4cqw rgba(0,0,0,.55); }
+.board-tilt .tile { transform-style: preserve-3d; overflow: visible; }
+.board-tilt .tokens, .board-tilt .band { transform-style: preserve-3d; }
+/* Las fichas, casas y hoteles se paran mirando al jugador */
+.board-tilt .token { transform: rotateX(-30deg); transform-origin: 50% 100%; }
+.board-tilt .token .token-shadow { transform: rotateX(30deg) scaleY(.7); transform-origin: 50% 100%; }
+.board-tilt .piece-house, .board-tilt .piece-hotel { transform: rotateX(-30deg); transform-origin: 50% 100%; }
+.board-tilt .piece-cards { transform: rotateX(-30deg) translateY(-8%); transform-origin: 50% 100%; }
+.board-tilt .center { transform: translateZ(0); }
+@media (max-width: 1023px) { .board-tilt .board { transform: none; box-shadow: 0 10px 40px rgba(0,0,0,.25); } .board-tilt .token, .board-tilt .piece-house, .board-tilt .piece-hotel, .board-tilt .piece-cards, .board-tilt .token .token-shadow { transform: none; } }
+
 /* Tablero: unidades relativas al tamaño del contenedor */
 .board {
   container-type: size;
@@ -40,7 +64,16 @@ body {
   cursor: pointer;
   transition: filter .15s;
 }
-.tile:hover { filter: brightness(1.05); }
+.tile:hover { filter: brightness(1.06); transform: translateY(-1.5%) scale(1.025); z-index: 6; box-shadow: 0 0.6cqw 1.2cqw rgba(0,0,0,.28); }
+.tile { transition: filter .15s, transform .18s cubic-bezier(.2,1.2,.4,1), box-shadow .18s; }
+/* El nombre del turno entra deslizando */
+.turn-slide { animation: turnSlide .45s cubic-bezier(.2,1.2,.4,1) both; }
+@keyframes turnSlide { 0% { transform: translateY(70%); opacity: 0 } 100% { transform: none; opacity: 1 } }
+/* La ficha del panel se sacude cuando entra o sale plata */
+.avatar.wobble-up { animation: wobbleUp .7s cubic-bezier(.3,1.5,.5,1); }
+.avatar.wobble-down { animation: wobbleDown .7s ease-in-out; }
+@keyframes wobbleUp { 0% { transform: scale(1) } 30% { transform: scale(1.22) rotate(-6deg) } 55% { transform: scale(.95) rotate(4deg) } 100% { transform: none } }
+@keyframes wobbleDown { 0%,100% { transform: translateX(0) } 20% { transform: translateX(-4px) rotate(-5deg) } 40% { transform: translateX(4px) rotate(5deg) } 60% { transform: translateX(-3px) } 80% { transform: translateX(3px) } }
 .tile.corner { font-size: 1.5cqw; align-items: center; justify-content: center; text-align: center; }
 .tile.corner .body { align-self: stretch; width: 100%; justify-content: flex-start; padding: 0.6cqw 0.25cqw 4.6cqw; gap: 0.3cqw; }
 .tile.corner .name { font-size: 1.02cqw; line-height: 1.2; }
@@ -66,6 +99,7 @@ body {
 .tile .name { font-weight: 700; font-size: 0.92cqw; letter-spacing: -0.015em; overflow-wrap: normal; word-break: normal; hyphens: manual; }
 .tile .price { font-weight: 600; font-size: 0.85cqw; opacity: .75; }
 .tile.owned { box-shadow: inset 0 0 0 0.35cqw var(--owner); }
+.tile.owned:hover { box-shadow: inset 0 0 0 0.35cqw var(--owner), 0 0.6cqw 1.2cqw rgba(0,0,0,.28); }
 .tile.mortgaged .body { opacity: .45; background: repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,.08) 6px 12px); }
 
 /* Casas, hoteles y mazos dibujados */
@@ -95,7 +129,20 @@ body {
 .token.more { display: grid; place-items: center; border-radius: 999px; background: #1F2A37; color: #fff;
   font-weight: 900; font-size: 1.2cqw; line-height: 1; box-shadow: 0 0 0 0.22cqw #fff, 0 0.25cqw 0.4cqw rgba(0,0,0,.4);
   width: 2.4cqw !important; height: 2.4cqw !important; align-self: center; }
-.token.current { animation: bounce 1.2s ease-in-out infinite; filter: drop-shadow(0 0 0.5cqw rgba(255,255,255,.95)); }
+.token.current { filter: drop-shadow(0 0 0.5cqw rgba(255,255,255,.95)); }
+.token.current .piece-token { animation: bounce 1.2s ease-in-out infinite; }
+/* Sombra en el piso (separada de la figura, así la figura salta y la sombra se queda) */
+.token-shadow { position: absolute; left: 12%; right: 12%; bottom: 3%; height: 16%; border-radius: 50%; background: radial-gradient(ellipse, rgba(0,0,0,.42), rgba(0,0,0,0) 70%); pointer-events: none; }
+.token .piece-token { position: relative; z-index: 1; transform-origin: 50% 90%; }
+/* Salto de casilla en casilla: la figura hace un arco y la sombra se achica en el aire */
+.token.hop { animation: none; }
+.token.hop .piece-token { animation: hopArc .23s cubic-bezier(.3,.6,.4,1) both; }
+.token.hop .token-shadow { animation: hopShadow .23s ease-out both; }
+@keyframes hopArc { 0% { transform: translateY(0) scale(1) } 45% { transform: translateY(-58%) scale(1.08, .96) } 100% { transform: translateY(0) scale(1) } }
+@keyframes hopShadow { 0% { transform: scale(1); opacity: 1 } 45% { transform: scale(.55); opacity: .45 } 100% { transform: scale(1); opacity: 1 } }
+/* Rebote al caer en la casilla final */
+.token.land .piece-token { animation: landSquash .45s cubic-bezier(.3,1.5,.5,1) both; }
+@keyframes landSquash { 0% { transform: translateY(-18%) scale(1) } 35% { transform: translateY(0) scale(1.18, .8) } 70% { transform: translateY(-4%) scale(.96, 1.06) } 100% { transform: none } }
 @keyframes bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-12%) } }
 .center {
   grid-column: 2 / 12; grid-row: 2 / 12;
@@ -147,6 +194,12 @@ body {
   text-shadow: 0 2px 0 rgba(0,0,0,.15), 0 0 12px rgba(255,255,255,.9); animation: floatUp 1.5s ease-out forwards;
 }
 .float.react { font-size: 40px; text-shadow: 0 3px 8px rgba(0,0,0,.35); }
+/* Polvito al construir */
+.float.dust { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle, #d6c9a8, #a89873); animation: dustPuff .85s ease-out forwards; text-shadow: none; }
+@keyframes dustPuff { 0% { transform: translate(-50%, -50%) scale(.4); opacity: .95 } 100% { transform: translate(calc(-50% + (var(--dx, 1) * 22px)), calc(-50% - 26px)) scale(2.2); opacity: 0 } }
+/* La casilla destella con el color del dueño cuando cobra alquiler */
+.tile.tile-flash { animation: tileFlash 1.2s ease-out; z-index: 5; }
+@keyframes tileFlash { 0% { box-shadow: inset 0 0 0 0.35cqw var(--owner), 0 0 0 0 var(--flash), 0 0 0 0 var(--flash) } 20% { box-shadow: inset 0 0 0 0.6cqw var(--flash), 0 0 2cqw 0.6cqw var(--flash) } 100% { box-shadow: inset 0 0 0 0.35cqw var(--owner), 0 0 0 0 transparent } }
 .float.good { color: #15803d; } .float.bad { color: #b91c1c; } .float.neutral { color: #1F2A37; }
 @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
 
@@ -210,6 +263,21 @@ body {
 .die3d .f3 { transform: rotateX(90deg) translateZ(calc(var(--d) / 2)); }
 .die3d .f4 { transform: rotateX(-90deg) translateZ(calc(var(--d) / 2)); }
 .die3d-scene.rolling .die3d { animation: tumble .9s ease-out; }
+/* Los dados ruedan por la mesa: cada tirada entra por un lado distinto */
+.dice-stage { display: flex; align-items: center; gap: 2cqw; }
+.die-slot { position: relative; }
+.dice-stage.rolling .die-slot { animation-duration: .95s; animation-timing-function: cubic-bezier(.15,.85,.3,1); animation-fill-mode: both; }
+.dice-stage.rolling .die-slot.d2 { animation-delay: .06s; } .dice-stage.rolling .die-slot.d3 { animation-delay: .12s; }
+.dice-stage.throw-left .die-slot { animation-name: fromLeft; } .dice-stage.throw-right .die-slot { animation-name: fromRight; }
+.dice-stage.throw-top .die-slot { animation-name: fromTop; } .dice-stage.throw-bottom .die-slot { animation-name: fromBottom; }
+.dice-stage.throw-spin .die-slot { animation-name: spinIn; } .dice-stage.throw-bounce .die-slot { animation-name: bounceIn; }
+.dice-stage.throw-cross .die-slot.d1 { animation-name: fromLeft; } .dice-stage.throw-cross .die-slot.d2 { animation-name: fromRight; } .dice-stage.throw-cross .die-slot.d3 { animation-name: fromTop; }
+@keyframes fromLeft { 0% { transform: translate(-28cqw, 6cqw) rotate(-540deg); opacity: 0 } 15% { opacity: 1 } 70% { transform: translate(1.5cqw, -1cqw) rotate(20deg) } 100% { transform: none } }
+@keyframes fromRight { 0% { transform: translate(28cqw, -6cqw) rotate(540deg); opacity: 0 } 15% { opacity: 1 } 70% { transform: translate(-1.5cqw, 1cqw) rotate(-20deg) } 100% { transform: none } }
+@keyframes fromTop { 0% { transform: translate(-6cqw, -24cqw) rotate(-400deg) scale(1.4); opacity: 0 } 15% { opacity: 1 } 55% { transform: translate(1cqw, 2cqw) rotate(30deg) scale(1) } 75% { transform: translate(0, -1.2cqw) rotate(-8deg) } 100% { transform: none } }
+@keyframes fromBottom { 0% { transform: translate(8cqw, 24cqw) rotate(420deg) scale(.7); opacity: 0 } 15% { opacity: 1 } 60% { transform: translate(-1cqw, -2cqw) rotate(-25deg) scale(1.05) } 100% { transform: none } }
+@keyframes spinIn { 0% { transform: rotate(0) scale(.2); opacity: 0 } 20% { opacity: 1 } 60% { transform: rotate(700deg) scale(1.25) } 100% { transform: rotate(720deg) scale(1) } }
+@keyframes bounceIn { 0% { transform: translateY(-22cqw) rotate(-200deg); opacity: 0 } 10% { opacity: 1 } 40% { transform: translateY(0) rotate(0) } 58% { transform: translateY(-7cqw) rotate(90deg) } 76% { transform: translateY(0) rotate(180deg) } 88% { transform: translateY(-2cqw) rotate(200deg) } 100% { transform: translateY(0) rotate(180deg) } }
 .die3d-scene.rolling { animation: dieHop .9s ease-out; }
 @keyframes dieHop { 0% { transform: translateY(0) } 30% { transform: translateY(-35%) } 60% { transform: translateY(-12%) } 100% { transform: translateY(0) } }
 @keyframes tumble { 0% { transform: rotateX(0) rotateY(0) } 30% { transform: rotateX(200deg) rotateY(160deg) rotateZ(40deg) } 60% { transform: rotateX(380deg) rotateY(320deg) rotateZ(-20deg) } 100% { transform: rotateX(360deg) rotateY(360deg) } }
@@ -218,6 +286,9 @@ body {
 .reaction:hover { transform: scale(1.25); background: rgba(0,0,0,.06); }
 .reaction:active { transform: scale(.95); }
 .board-focus .side-panel { display: none; }
+.focus-exit { position: fixed; top: 10px; right: 12px; z-index: 45; background: rgba(31,42,55,.88); color: #fff; font-weight: 800; font-size: 13px;
+  padding: 8px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.35); backdrop-filter: blur(4px); }
+.focus-exit:hover { background: rgba(31,42,55,1); }
 
 /* Título de propiedad en chico, dentro del panel de jugadores */
 .mini-deed { width: 4.4rem; border-radius: .5rem; overflow: hidden; background: #fff; border: 1px solid rgba(0,0,0,.15);
@@ -237,6 +308,18 @@ body {
 .nandu-face { font-size: calc(var(--d) * .5); line-height: 1; letter-spacing: -.03em; }
 .nandu-die.rolling { animation: nanduShake .9s ease-out; }
 @keyframes nanduShake { 0% { transform: translateY(0) rotate(0) } 25% { transform: translateY(-35%) rotate(-18deg) } 55% { transform: translateY(-10%) rotate(14deg) } 80% { transform: translateY(-4%) rotate(-6deg) } 100% { transform: translateY(0) rotate(0) } }
+
+/* Carta que vuela desde el mazo y se da vuelta */
+.cardflip { position: relative; perspective: 1200px; min-height: 230px; }
+.cardface { position: absolute; inset: 0; border-radius: 1rem; padding: 1.5rem; text-align: center; backface-visibility: hidden; transition: transform .6s cubic-bezier(.2,.8,.3,1); box-shadow: 0 12px 30px rgba(0,0,0,.35); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.cardface.front { transform: rotateY(180deg); }
+.cardflip.flipped .cardface.front { transform: rotateY(0deg); }
+.cardflip.flipped .cardface.back { transform: rotateY(-180deg); }
+.cardface.back.chance { background: repeating-linear-gradient(45deg, #f59e0b 0 10px, #fbbf24 10px 20px); box-shadow: 0 12px 30px rgba(0,0,0,.35), inset 0 0 0 6px #fff, inset 0 0 0 8px #b45309; }
+.cardface.back.community { background: repeating-linear-gradient(45deg, #0284c7 0 10px, #38bdf8 10px 20px); box-shadow: 0 12px 30px rgba(0,0,0,.35), inset 0 0 0 6px #fff, inset 0 0 0 8px #075985; }
+.cardback-logo { width: 84px; height: 84px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 46px; font-weight: 900; color: #1F2A37; box-shadow: 0 4px 10px rgba(0,0,0,.25); }
+.cardback-name { margin-top: 10px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.3); letter-spacing: .04em; }
+.cardflip .cardface.front { position: relative; }
 
 /* Carta que se da vuelta */
 .flip-scene { perspective: 1200px; }
@@ -389,6 +472,64 @@ body {
 .shell { display: inline-block; font-size: 18px; filter: hue-rotate(0deg) saturate(0); opacity: .9; }
 .duel-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 16px; padding: 14px 10px; font-weight: 900; font-size: 16px; color: white; transition: transform .1s; }
 .duel-btn:hover { transform: translateY(-2px); } .duel-btn.self { background: linear-gradient(180deg, #3b82f6, #1e40af); } .duel-btn.opp { background: linear-gradient(180deg, #ef4444, #991b1b); }
+/* Podio final */
+.fpodium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; padding: 0 8px; }
+.fpodium-col { display: flex; flex-direction: column; align-items: center; width: 32%; max-width: 170px; animation: podiumRise .7s cubic-bezier(.2,1.2,.4,1) both; }
+.fpodium-token { position: relative; animation: podiumHop .6s cubic-bezier(.3,1.6,.5,1) both; }
+.fpodium-crown { position: absolute; top: -22px; left: 50%; transform: translateX(-50%) rotate(-12deg); font-size: 26px; animation: crownDrop .6s cubic-bezier(.3,1.6,.5,1) both; animation-delay: 1.1s; }
+.fpodium-name { margin-top: 4px; font-weight: 900; font-size: 15px; text-align: center; }
+.fpodium-worth { font-size: 12px; color: #15803d; font-weight: 700; }
+.fpodium-block { width: 100%; margin-top: 6px; border-radius: 12px 12px 4px 4px; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 30px;
+  box-shadow: inset 0 -10px 0 rgba(0,0,0,.25), inset 0 3px 0 rgba(255,255,255,.35), 0 8px 16px rgba(0,0,0,.2); }
+.fpodium-block span { text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.fpodium-1 .fpodium-block { height: 118px; } .fpodium-2 .fpodium-block { height: 84px; } .fpodium-3 .fpodium-block { height: 62px; }
+@keyframes podiumRise { 0% { transform: translateY(60px); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@keyframes podiumHop { 0% { transform: translateY(-40px) scale(.6); opacity: 0 } 60% { transform: translateY(6px) scale(1.08) } 100% { transform: none; opacity: 1 } }
+@keyframes crownDrop { 0% { transform: translate(-50%, -30px) rotate(20deg); opacity: 0 } 100% { transform: translateX(-50%) rotate(-12deg); opacity: 1 } }
+.award { display: flex; align-items: center; gap: 10px; background: #FBF6E8; border: 1px solid rgba(0,0,0,.08); border-radius: 14px; padding: 8px 10px; animation: awardIn .5s cubic-bezier(.2,1.2,.4,1) both; }
+.award-icon { font-size: 26px; }
+@keyframes awardIn { 0% { transform: translateX(-16px); opacity: 0 } 100% { transform: none; opacity: 1 } }
+
+/* Bingo relámpago */
+.bingo-drum { display: flex; align-items: center; gap: 12px; background: linear-gradient(160deg, #1e293b, #0f172a); border-radius: 16px; padding: 10px 14px; color: #fff; }
+.bingo-last { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 900; color: #111;
+  background: radial-gradient(circle at 35% 30%, #fff, #fde047 45%, #ca8a04); box-shadow: 0 6px 12px rgba(0,0,0,.5), inset 0 -4px 8px rgba(0,0,0,.25); animation: ballDrop .5s cubic-bezier(.2,1.5,.4,1); flex: 0 0 auto; }
+@keyframes ballDrop { 0% { transform: translateY(-40px) scale(.6); opacity: 0 } 60% { transform: translateY(6px) scale(1.05) } 100% { transform: none; opacity: 1 } }
+.bingo-history { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.bingo-ball { display: inline-grid; place-items: center; border-radius: 50%; font-weight: 800; color: #111; background: radial-gradient(circle at 35% 30%, #fff, #e5e7eb 50%, #9ca3af); }
+.bingo-ball.small { width: 26px; height: 26px; font-size: 12px; }
+.bingo-ball.on { background: radial-gradient(circle at 35% 30%, #bbf7d0, #22c55e 50%, #15803d); color: #fff; }
+.bingo-count { font-size: 11px; opacity: .7; white-space: nowrap; }
+.bingo-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 320px; margin: 0 auto; background: #fff7ed; border: 3px solid #f59e0b; border-radius: 16px; padding: 10px; box-shadow: 0 6px 16px rgba(0,0,0,.15); }
+.bingo-cell { height: 64px; border-radius: 12px; font-size: 26px; font-weight: 900; background: #fff; border: 2px solid #fcd34d; color: #1F2A37; transition: transform .1s, background .15s; }
+.bingo-cell:hover:not(:disabled) { transform: scale(1.05); }
+.bingo-cell.hot { animation: hot .8s ease-in-out infinite alternate; }
+@keyframes hot { from { box-shadow: 0 0 0 0 rgba(245,158,11,0) } to { box-shadow: 0 0 0 5px rgba(245,158,11,.45) } }
+.bingo-cell.on { background: linear-gradient(150deg, #22c55e, #15803d); color: #fff; border-color: #14532d; text-decoration: line-through; text-decoration-thickness: 3px; }
+.bingo-cell.struck { background: #fee2e2; border-color: #ef4444; }
+.bingo-cell.shake { animation: cellShake .45s; }
+@keyframes cellShake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+
+/* Blackjack */
+.bjtable { background: radial-gradient(ellipse at 50% 30%, #1f6b3a, #0f3d22 75%); border-radius: 18px; padding: 14px 14px 12px; color: #fff; box-shadow: inset 0 0 40px rgba(0,0,0,.45), 0 8px 20px rgba(0,0,0,.25); }
+.bj-row { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bj-label { font-size: 13px; opacity: .95; }
+.bj-hand { display: flex; gap: 6px; min-height: 76px; }
+.bj-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 8px 0; min-height: 40px; }
+.bj-stake { font-size: 12px; font-weight: 800; color: #fde68a; }
+.bj-result { font-size: 20px; font-weight: 900; padding: 4px 14px; border-radius: 999px; }
+.bj-result.win { background: #16a34a; } .bj-result.lose { background: #dc2626; } .bj-result.push { background: #475569; }
+.bjcard { position: relative; width: 52px; height: 74px; border-radius: 7px; background: #fff; color: #111; box-shadow: 0 3px 6px rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.08);
+  display: grid; place-items: center; font-weight: 900; animation: bjDeal .45s cubic-bezier(.2,1.4,.4,1) both; }
+.bjcard.red { color: #c81e1e; }
+.bjcard .bj-suit { font-size: 26px; line-height: 1; }
+.bjcard .bj-corner { position: absolute; top: 4px; left: 5px; font-size: 12px; line-height: 1; display: flex; flex-direction: column; align-items: center; }
+.bjcard .bj-corner small { font-size: 10px; }
+.bjcard .bj-corner.flip { top: auto; left: auto; bottom: 4px; right: 5px; transform: rotate(180deg); }
+.bjcard.hidden { background: repeating-linear-gradient(45deg, #1e3a8a 0 6px, #1d4ed8 6px 12px); box-shadow: 0 3px 6px rgba(0,0,0,.4), inset 0 0 0 3px #fff; }
+.bjcard .bj-back { font-size: 22px; }
+@keyframes bjDeal { 0% { transform: translateY(-40px) rotate(-8deg) scale(.7); opacity: 0 } 100% { transform: none; opacity: 1 } }
+
 /* Truco: verde es "quiero", rojo es "no quiero" */
 .duel-btn.quiero { background: linear-gradient(180deg, #22c55e, #15803d); min-width: 150px; }
 .duel-btn.noquiero { background: linear-gradient(180deg, #ef4444, #991b1b); min-width: 150px; }

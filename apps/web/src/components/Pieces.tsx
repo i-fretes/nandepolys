@@ -105,7 +105,7 @@ function figure(token: TokenId, c: string, id: string) {
 }
 
 /** Ficha de un jugador: la figura en su color, con base y sombra para que se vea apoyada. */
-export function PlayerToken({ token, color, size, title }: { token: TokenId; color: string; size?: string; title?: string }) {
+export function PlayerToken({ token, color, size, title, noShadow }: { token: TokenId; color: string; size?: string; title?: string; noShadow?: boolean }) {
   const id = `${token}-${color.replace(/[^a-z0-9]/gi, '')}`;
   return (
     <svg viewBox="0 0 40 48" className="piece-token" style={size ? { width: size, height: size } : undefined} role="img" aria-label={title}>
@@ -118,7 +118,7 @@ export function PlayerToken({ token, color, size, title }: { token: TokenId; col
           <stop offset="0" stopColor={light(color)} /><stop offset="1" stopColor={dark(color)} />
         </radialGradient>
       </defs>
-      <ellipse cx="20" cy="44.6" rx="14.5" ry="3.4" fill="#000" opacity=".32" />
+      {!noShadow && <ellipse cx="20" cy="44.6" rx="14.5" ry="3.4" fill="#000" opacity=".32" />}
       <ellipse cx="20" cy="42" rx="14.5" ry="4.2" fill={`url(#b${id})`} stroke={dark(color)} strokeWidth="1.3" />
       <ellipse cx="20" cy="40.8" rx="10.5" ry="2.6" fill={light(color)} opacity=".5" />
       <g>{figure(token, color, id)}</g>

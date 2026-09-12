@@ -175,12 +175,17 @@ for (let i = 0; i < 10; i++) { if (await clickIf(p2, 'Terminar turno')) break; a
 
 // 5) Desafío: trivia (el que tenga el turno desafía)
 // Avanzamos turnos hasta que le toque a p3
-for (let i = 0; i < 12; i++) {
+for (let i = 0; i < 40; i++) {
   const st = await p2.evaluate(() => window.__nandepoly.store.getState().state);
   const curId = st.players[st.currentPlayerIndex].id;
   const curP = [a, b, c].find(async () => false) ?? null; void curP;
   if (st.turnPhase === 'AWAITING_ROLL' && curId === await cur3.evaluate(() => window.__nandepoly.store.getState().playerId)) break;
-  for (const p of [a, b, c]) { await clickIf(p, 'Entendido'); await clickIf(p, 'Tirar dados') || await clickIf(p, 'No comprar') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Salir sin apostar') || await clickIf(p, 'Terminar turno'); }
+  for (const p of [a, b, c]) {
+    await clickIf(p, 'Entendido');
+    // Casino para todos: el que cayó apuesta lo mínimo y sale; los demás pasan
+    if (st.turnPhase === 'CASINO') { await clickIf(p, 'Paso, no apuesto') || await clickIf(p, 'Listo, salgo del Casino') || await clickIf(p, 'Apostar'); continue; }
+    await clickIf(p, 'Tirar dados') || await clickIf(p, 'No comprar') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Terminar turno');
+  }
   await p2.waitForTimeout(350);
 }
 const p3 = cur3;

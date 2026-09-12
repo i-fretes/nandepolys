@@ -15,7 +15,7 @@ function anchor(id: string): { x: number; y: number } {
 }
 
 interface Bill { id: number; x0: number; y0: number; x1: number; y1: number; delay: number; rot: number; big: boolean }
-interface Float { id: number; x: number; y: number; text: string; tone: string }
+interface Float { id: number; x: number; y: number; text: string; tone: string; dx?: number }
 interface Jackpot { id: number; amount: number }
 
 /**
@@ -67,6 +67,23 @@ export default function FX() {
         const item: Float = { id: Date.now() + Math.random(), x: a.x, y: a.y - 16, text: f.emoji, tone: 'react' };
         setFloats(fs => [...fs, item]);
         setTimeout(() => setFloats(fs => fs.filter(x => x !== item)), 1800);
+        return;
+      }
+      case 'tileflash': {
+        const el = document.querySelector<HTMLElement>(`[data-tile="${f.tileId}"]`);
+        if (!el) return;
+        el.style.setProperty('--flash', f.color);
+        el.classList.remove('tile-flash'); void el.offsetWidth; el.classList.add('tile-flash');
+        setTimeout(() => el.classList.remove('tile-flash'), 1300);
+        return;
+      }
+      case 'dust': {
+        const el = document.querySelector(`[data-tile="${f.tileId}"]`);
+        const r = el?.getBoundingClientRect();
+        if (!r) return;
+        const items: Float[] = Array.from({ length: 7 }, (_, i) => ({ id: Date.now() + Math.random() + i, x: r.left + r.width * (0.3 + Math.random() * 0.4), y: r.top + r.height * (0.25 + Math.random() * 0.3), text: '', tone: 'dust', dx: (Math.random() - 0.5) * 2 }));
+        setFloats(fs => [...fs, ...items]);
+        setTimeout(() => setFloats(fs => fs.filter(x => !items.includes(x))), 900);
         return;
       }
       case 'shake': {
@@ -133,7 +150,7 @@ export default function FX() {
         </span>
       ))}
       {floats.map(f => (
-        <span key={f.id} className={`float ${f.tone}`} style={{ left: f.x, top: f.y }}>{f.text}</span>
+        <span key={f.id} className={`float ${f.tone}`} style={{ left: f.x, top: f.y, ['--dx' as string]: f.dx !== undefined ? String(f.dx) : undefined }}>{f.text}</span>
       ))}
       {jackpot && (
         <div className="jackpot-splash">

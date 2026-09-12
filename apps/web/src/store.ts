@@ -49,6 +49,7 @@ interface Store {
   lootbox: { id: number; playerId: string; index: number; label: string; amount: number; prize: string; openedAt: number | null } | null;
   clockOffset: number;                  // serverTime - Date.now(); para temporizadores sincronizados
   moving: string | null;                // jugador cuya ficha está recorriendo el tablero (se espera para mostrar compra/alquiler)
+  movePaused: boolean;                  // la ficha frenó en una casilla intermedia (Suerte/Cooperativa) para mostrar la carta antes de seguir
   eventSpin: { id: number; eventId: string; index: number; text: string } | null;
   lastDuelResult: { id: number; winner: string; loser: string; amount: number; game: string } | null;
 
@@ -88,7 +89,9 @@ export type FxInput =
   | { kind: 'crack'; playerId: string }
   | { kind: 'jackpot'; playerId: string; amount: number }
   | { kind: 'rain'; playerId: string }
-  | { kind: 'react'; playerId: string; emoji: string };
+  | { kind: 'react'; playerId: string; emoji: string }
+  | { kind: 'tileflash'; tileId: number; color: string }
+  | { kind: 'dust'; tileId: number };
 export type FxEvent = FxInput & { id: number };
 
 let fxCounter = 0;
@@ -129,6 +132,7 @@ export const useStore = create<Store>((set, get) => ({
   lastDuelResult: null,
   clockOffset: 0,
   moving: null,
+  movePaused: false,
 
   setConnected: v => set({ connected: v }),
   setLootbox: v => set({ lootbox: v }),
@@ -284,7 +288,8 @@ export const useStore = create<Store>((set, get) => ({
         if ((e.type === 'rent' || e.type === 'tax' || e.type === 'expense') && e.playerId === me) sfx.pay();
         if ((e.type === 'income' || e.type === 'salary' || e.type === 'pot') && e.playerId === me) sfx.coin();
         if (e.type === 'buy' || e.type === 'auction_won') sfx.buy();
-        if (e.type === 'build') sfx.build();
+        if (e.type === 'build') { sfx.build(); if (typeof e.data?.tileId === 'number') push({ kind: 'dust', tileId: e.data.tileId as number }); }
+        if (e.type === 'rent' && typeof e.data?.tileId === 'number' && to) { const own = view.state.players.find(p => p.id === to); if (own) push({ kind: 'tileflash', tileId: e.data.tileId as number, color: own.color }); }
         if (e.type === 'turn' && e.playerId === me) { toast('¡Es tu turno!', { icon: '🎲' }); sfx.turn(); }
         if (e.type === 'auction_start') { toast(e.text, { icon: '🔨' }); sfx.auction(); }
         if (e.type === 'bankrupt' || e.type === 'leave') { toast(e.text, { icon: '💸', duration: 6000 }); if (e.playerId === me) sfx.lose(); }
@@ -368,29 +373,52 @@ function animateMoves(prev: ClientState, next: ClientState, events: GameEvent[])
       || events.some(e => e.type === 'mudanza' && (e.data?.a === p.id || e.data?.b === p.id)) || next.phase !== 'PLAYING';
     const back = events.some(e => e.type === 'card' && e.playerId === p.id && e.data?.cardId === 'S9');
     if (teleport) { patchNow[p.id] = p.position; continue; }
-    const forward = (p.position - from + BOARD_SIZE) % BOARD_SIZE;
-    const steps = back ? -((from - p.position + BOARD_SIZE) % BOARD_SIZE) : forward;
-    const n = Math.abs(steps);
-    const speed = n <= 12 ? 230 : Math.max(60, 2600 / n);   // más pausado: se ve cada salto
+    // Paradas intermedias: si sacó una carta que lo movió, la ficha frena en Suerte/Cooperativa,
+    // se muestra la carta, y recién después sigue viaje. Así no pasa "de largo".
+    const lands = events.filter(e => e.type === 'land' && e.playerId === p.id && typeof e.data?.tileId === 'number').map(e => e.data!.tileId as number);
+    const waypoints = lands.length ? [...lands] : [p.position];
+    if (waypoints[waypoints.length - 1] !== p.position) waypoints.push(p.position);
+    // segmentos: siempre el camino corto (hacia atrás solo si es mucho más corto, ej. "retrocedé 3")
+    const segs: number[] = [];
+    let cursor = from;
+    for (const w of waypoints) {
+      const fwd = (w - cursor + BOARD_SIZE) % BOARD_SIZE;
+      if (fwd === 0) continue;
+      segs.push(fwd <= 30 ? fwd : -(BOARD_SIZE - fwd));
+      cursor = w;
+    }
+    void back;
+    if (!segs.length) { patchNow[p.id] = p.position; continue; }
+    const total = segs.reduce((a, b) => a + Math.abs(b), 0);
+    const speed = total <= 12 ? 230 : Math.max(60, 2600 / total);   // más pausado: se ve cada salto
+    const PAUSE = 1700;                                              // lo que se frena en la casilla de la carta
     if (animTimers[p.id]) clearTimeout(animTimers[p.id]);
-    let i = 0;
-    let pos = from;
     const target = p.position;
     const isCurrent = next.players[next.currentPlayerIndex]?.id === p.id;
-    if (isCurrent) useStore.setState({ moving: p.id });
+    if (isCurrent) useStore.setState({ moving: p.id, movePaused: false });
+    let pos = from;
+    let segIdx = 0;
+    let stepsLeft = Math.abs(segs[0]);
+    let dir = Math.sign(segs[0]);
+    const finish = () => {
+      useStore.setState(s => ({ displayPos: { ...s.displayPos, [p.id]: target }, moving: s.moving === p.id ? null : s.moving, movePaused: s.moving === p.id ? false : s.movePaused }));
+      delete animTimers[p.id];
+    };
     const tick = () => {
-      i++;
-      pos = (pos + Math.sign(steps) + BOARD_SIZE) % BOARD_SIZE;
+      pos = (pos + dir + BOARD_SIZE) % BOARD_SIZE;
+      stepsLeft--;
       useStore.setState(s => ({ displayPos: { ...s.displayPos, [p.id]: pos } }));
-      if (i < n && pos !== target) { sfx.hop(); animTimers[p.id] = setTimeout(tick, speed); }
-      else {
-        useStore.setState(s => ({ displayPos: { ...s.displayPos, [p.id]: target }, moving: s.moving === p.id ? null : s.moving }));
-        delete animTimers[p.id];
-      }
+      if (stepsLeft > 0) { sfx.hop(); animTimers[p.id] = setTimeout(tick, speed); return; }
+      segIdx++;
+      if (segIdx >= segs.length || pos === target) return finish();
+      // parada intermedia: frena, se ve la carta, y sigue
+      useStore.setState(s => (s.moving === p.id ? { movePaused: true } : {}));
+      stepsLeft = Math.abs(segs[segIdx]); dir = Math.sign(segs[segIdx]);
+      animTimers[p.id] = setTimeout(() => { useStore.setState(s => (s.moving === p.id ? { movePaused: false } : {})); tick(); }, PAUSE);
     };
     animTimers[p.id] = setTimeout(tick, 650); // deja ver los dados primero
     // red de seguridad: nunca dejar la partida "avanzando" para siempre
-    setTimeout(() => useStore.setState(s => (s.moving === p.id && !animTimers[p.id] ? { moving: null } : {})), 650 + n * speed + 2500);
+    setTimeout(() => useStore.setState(s => (s.moving === p.id && !animTimers[p.id] ? { moving: null, movePaused: false } : {})), 650 + total * speed + segs.length * PAUSE + 2500);
   }
   if (Object.keys(patchNow).length) useStore.setState(s => ({ displayPos: { ...s.displayPos, ...patchNow }, moving: s.moving && patchNow[s.moving] !== undefined ? null : s.moving }));
 }

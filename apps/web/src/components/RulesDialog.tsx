@@ -63,11 +63,11 @@ const SECTIONS: { title: string; icon: string; body: React.ReactNode }[] = [
   },
   {
     title: 'Doble o nada en alquileres', icon: '🎲',
-    body: <p>Con la opción activada, al caer en propiedad ajena podés <b>pagar</b> o <b>proponer doble o nada</b>. El dueño decide: si rechaza, pagás lo normal; si acepta, <b>lo definen mano a mano en un mini-desafío</b> (duelo de dados, piedra-papel-tijera, trivia o tereré, elegido al azar). Si ganás vos, <b>no pagás nada</b>; si gana el dueño, <b>pagás el doble</b>; si empatan, pagás lo normal. Solo podés proponerlo si podrías cubrir el doble.</p>,
+    body: <p>Con la opción activada, al caer en propiedad ajena podés <b>pagar</b> o <b>proponer doble o nada</b>. El dueño decide: si rechaza, pagás lo normal; si acepta, <b>lo definen mano a mano en un mini-desafío</b> (duelo de dados, piedra-papel-tijera, trivia, tereré o blackjack —el dueño es la banca—, elegido al azar). Si ganás vos, <b>no pagás nada</b>; si gana el dueño, <b>pagás el doble</b>; si empatan, pagás lo normal. Solo podés proponerlo si podrías cubrir el doble.</p>,
   },
   {
     title: 'Desafíos', icon: '⚔️',
-    body: <p>Con la opción activada, en tu turno podés <b>Desafiar</b> a otro jugador por una apuesta; puede rechazar. Además entran dos cartas <b>¡Desafío!</b> al mazo: si la sacás, elegís rival y mini-juego por ₲ 100.000 y <b>no puede negarse</b>. Mini-juegos: <b>Duelo de dados</b> (mayor gana), <b>Piedra, papel o tijera</b> (mejor de tres, elecciones secretas), <b>Trivia paraguaya</b> (primero que acierta gana; si fallan los dos, otra pregunta, hasta tres) y <b>Tereré caliente</b> (cuando aparece el tereré, tocá primero; si te adelantás, perdés).</p>,
+    body: <p>Con la opción activada, en tu turno podés <b>Desafiar</b> a otro jugador por una apuesta; puede rechazar. Además entran dos cartas <b>¡Desafío!</b> al mazo: si la sacás, elegís rival y mini-juego por ₲ 100.000 y <b>no puede negarse</b>. Mini-juegos: <b>Duelo de dados</b> (mayor gana), <b>Piedra, papel o tijera</b> (mejor de tres, elecciones secretas), <b>Trivia paraguaya</b> (primero que acierta gana; si fallan los dos, otra pregunta, hasta tres) y <b>Tereré caliente</b> (cuando aparece el tereré, tocá primero; si te adelantás, perdés) y <b>Blackjack</b> (el que desafía es la banca y el rival apuesta el monto: pide, se planta o dobla; la banca pide hasta 17; blackjack natural paga 3 a 2; empate devuelve la apuesta).</p>,
   },
   {
     title: 'La Arena', icon: '🏟️',

@@ -1,5 +1,5 @@
 import {
-  PARAGUAYISMOS, sapoPos, canBuild, canMortgage, canSellBuilding, currentPlayer, groupTiles, legalActions, normalizeWord, ownsFullGroup,
+  PARAGUAYISMOS, bjValue, sapoPos, canBuild, canMortgage, canSellBuilding, currentPlayer, groupTiles, legalActions, normalizeWord, ownsFullGroup,
   propertiesOf, tile, type Action, type GameState, type PropertyTile,
 } from '@nandepoly/engine';
 
@@ -28,6 +28,18 @@ function arenaBot(s: GameState): Action | null {
     case 'cana': { const b = bots[Math.floor(hash(s, now % 1000) * bots.length)]; return { type: 'ARENA_MOVE', playerId: b, now, payload: { taps: 5 } }; }
     case 'barra': { const b = bots.find(id => (d.attempts?.[id]?.length ?? 3) < 3); return b ? { type: 'ARENA_MOVE', playerId: b, now, payload: { distance: Math.floor(hash(s, d.attempts[b].length + 7) * 30) } } : null; }
     case 'cuantos': { const b = bots.find(id => d.answers?.[id] === undefined); return b ? { type: 'ARENA_MOVE', playerId: b, now, payload: { value: Math.floor(hash(s, 3) * 400) } } : null; }
+    case 'bingo': {
+      const cards = d.cards as Record<string, number[]>, marked = d.marked as Record<string, number[]>, called = (d.called as number[]) ?? [], bingo = (d.bingo as Record<string, number>) ?? {};
+      for (const b of bots) {
+        if (bingo[b] !== undefined) continue;
+        const card = cards?.[b] ?? [];
+        const pending = card.filter(n => called.includes(n) && !marked[b].includes(n));
+        // el bot tarda un poco en ver la bolilla: marca solo si salió hace al menos una bolilla
+        if (pending.length && (called.length - called.indexOf(pending[0])) >= 2) return { type: 'ARENA_MOVE', playerId: b, now, payload: { mark: pending[0] } };
+        if (card.length && card.every(n => marked[b].includes(n))) return { type: 'ARENA_MOVE', playerId: b, now, payload: { bingo: true } };
+      }
+      return null;
+    }
     case 'bomba': {
       if (!bots.includes(d.turn)) return null;
       const syl = normalizeWord(String(d.syllable));
@@ -219,8 +231,8 @@ export function botAction(s: GameState): Action | null {
       const rivals = s.players.filter(x => !x.bankrupt && x.id !== from.id && x.cash > 0);
       if (!rivals.length) return { type: 'CHALLENGE_CANCEL', playerId: s.hostId };
       const rival = rivals[s.turnNumber % rivals.length];
-      const kinds = ['dados', 'ppt', 'trivia', 'terere'] as const;
-      return { type: 'CHALLENGE_PROPOSE', playerId: from.id, toId: rival.id, kind: kinds[s.turnNumber % 4], amount: c.amount };
+      const kinds = ['dados', 'ppt', 'trivia', 'terere', 'blackjack'] as const;
+      return { type: 'CHALLENGE_PROPOSE', playerId: from.id, toId: rival.id, kind: kinds[s.turnNumber % 5], amount: c.amount };
     }
     if (c.status === 'pending' && to?.isBot) {
       return c.amount <= to.cash * 0.25 ? { type: 'CHALLENGE_ACCEPT', playerId: to.id } : { type: 'CHALLENGE_REJECT', playerId: to.id };
@@ -237,6 +249,12 @@ export function botAction(s: GameState): Action | null {
           return { type: 'CHALLENGE_MOVE', playerId: b.id, answer: (b.cash + (c.data.qIndex ?? 0)) % 4 }; // el bot "adivina"
         }
         if (c.kind === 'terere' && c.data.go) return { type: 'CHALLENGE_MOVE', playerId: b.id };
+        if (c.kind === 'blackjack' && c.data.bj && c.data.bj.stage === 'bettor' && c.data.bj.bettor === b.id) {
+          // Estrategia básica: pide con 16 o menos (con 17 blando también), se planta con 17+
+          const v = bjValue(c.data.bj.hands[b.id]);
+          if (v.total <= 11 && c.data.bj.hands[b.id].length === 2 && b.cash >= c.data.bj.stake * 2 && v.total >= 9) return { type: 'CHALLENGE_MOVE', playerId: b.id, bj: 'double' };
+          return { type: 'CHALLENGE_MOVE', playerId: b.id, bj: v.total < 17 || (v.total === 17 && v.soft) ? 'hit' : 'stand' };
+        }
       }
     }
     return null;

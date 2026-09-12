@@ -9,7 +9,7 @@ import {
   liquidationValue, mortgageValue, netWorth, player, propertiesOf, ranking, rentFor, unmortgageCost,
 } from './selectors';
 import {
-  RuleError, type Action, type ArenaGame, type Card, type ChallengeKind, type DeckId, type DuelGame, type GameEvent, type GameSettings, type GameState,
+  RuleError, type Action, type ArenaGame, type BjMove, type Card, type ChallengeKind, type DeckId, type DuelGame, type GameEvent, type GameSettings, type GameState,
   type GlobalEventId, type Group, type Player, type PlayerStats, type PptChoice, type PropertyTile, type SpeedFace, type TokenId, type TradeSide, type TradeState, type TurnPhase,
 } from './types';
 import { countTransports, countUtilities } from './selectors';
@@ -63,6 +63,9 @@ export function coldestGroups(s: GameState): Group[] {
   return GROUPS.filter(g => (s.groupLandings?.[g] ?? 0) === min);
 }
 
+export const BINGO_NUMBERS = 24;        // bolillas del 1 al 24
+export const BINGO_CARD = 9;            // 3×3
+export const BINGO_INTERVAL_MS = 1400;  // cada cuánto sale una bolilla
 export const ARENA_COUNTDOWN_MS = 3000;   // "3, 2, 1, ¡ya!" antes de cada mini-juego
 export const ARENA_REVEAL_MS = 3500;      // tiempo mostrando la respuesta correcta en la trivia
 export const TRUCO_HANDS = 3;             // el duelo de truco se define en 3 manos (empate: una más)
@@ -76,7 +79,7 @@ export function emptyStats(): PlayerStats {
     housesBuilt: 0, hotelsBuilt: 0, trades: 0, jailVisits: 0, jackpots: 0, arenaWins: 0, mortgagesRedeemed: 0, duelsWon: 0, doubles: 0, salaries: 0, donWins: 0,
   };
 }
-export const CHALLENGE_KINDS: ChallengeKind[] = ['dados', 'ppt', 'trivia', 'terere'];
+export const CHALLENGE_KINDS: ChallengeKind[] = ['dados', 'ppt', 'trivia', 'terere', 'blackjack'];
 /** Pago de la quiniela según la suma elegida (veces la apuesta, además de recuperarla). */
 // Pagos del Casino: siempre por debajo de lo "justo" (la banca gana a la larga, ~15 %)
 export const QUINIELA_PAYOUT: Record<number, number> = { 2: 25, 3: 13, 4: 8, 5: 6, 6: 5, 7: 4, 8: 5, 9: 6, 10: 8, 11: 13, 12: 25 };
@@ -1222,7 +1225,7 @@ function payRent(ctx: Ctx, p: Player, owner: Player, rent: number, tileName: str
   const paid = charge(ctx, p.id, rent, [owner.id], `alquiler de ${tileName}`);
   if (paid) {
     owner.stats.rentsCollected++; owner.stats.rentsThisLap++;
-    emit(ctx, 'rent', `${p.name} pagó ${fmt(rent)} de alquiler a ${owner.name} por ${tileName}.`, p.id, { amount: rent, to: owner.id });
+    emit(ctx, 'rent', `${p.name} pagó ${fmt(rent)} de alquiler a ${owner.name} por ${tileName}.`, p.id, { amount: rent, to: owner.id, tileId: p.position });
     finishResolution(ctx);
   }
 }
@@ -1533,7 +1536,7 @@ function challengePropose(ctx: Ctx, playerId: string, toId: string, kind: Challe
 }
 
 export function challengeName(kind: ChallengeKind): string {
-  return { dados: 'Duelo de dados', ppt: 'Piedra, papel o tijera', trivia: 'Trivia paraguaya', terere: 'Tereré caliente' }[kind];
+  return { dados: 'Duelo de dados', ppt: 'Piedra, papel o tijera', trivia: 'Trivia paraguaya', terere: 'Tereré caliente', blackjack: 'Blackjack' }[kind];
 }
 
 function challengeAnswer(ctx: Ctx, playerId: string, accept: boolean) {
@@ -1570,19 +1573,149 @@ function beginChallenge(ctx: Ctx) {
     case 'terere':
       c.data.go = false;
       return;
+    case 'blackjack':
+      return bjBegin(ctx);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Blackjack: el que desafía es la banca (o el dueño, en el doble o nada del alquiler)
+// ---------------------------------------------------------------------------
+
+/** Valor de una mano: los ases valen 11 y bajan a 1 si hace falta. */
+export function bjValue(cards: number[]): { total: number; soft: boolean } {
+  let total = 0, aces = 0;
+  for (const c of cards) {
+    const r = c % 13;                     // 0 = A, 1..8 = 2..9, 9 = 10, 10..12 = J Q K
+    if (r === 0) { aces++; total += 11; }
+    else if (r >= 9) total += 10;
+    else total += r + 1;
+  }
+  let soft = false;
+  while (total > 21 && aces > 0) { total -= 10; aces--; }
+  if (aces > 0) soft = true;
+  return { total, soft };
+}
+
+function bjDraw(ctx: Ctx): number {
+  const c = ctx.s.challenge!;
+  const deck = c.secret.deck!;
+  if (!deck.length) { // se acabó el mazo (casi imposible): barajamos otro
+    const r = shuffle(Array.from({ length: 52 }, (_, i) => i), ctx.s.seed); ctx.s.seed = r.seed; deck.push(...r.items);
+  }
+  return deck.pop()!;
+}
+
+function bjBegin(ctx: Ctx) {
+  const s = ctx.s;
+  const c = s.challenge!;
+  // La banca es quien desafió; en el doble o nada del alquiler, el dueño de la propiedad
+  const house = c.rent ? c.rent.ownerId : c.fromId;
+  const bettor = house === c.fromId ? c.toId! : c.fromId;
+  const r = shuffle(Array.from({ length: 52 }, (_, i) => i), s.seed); s.seed = r.seed;
+  c.secret.deck = r.items;
+  c.data.bj = { house, bettor, hands: { [house]: [], [bettor]: [] }, hidden: true, stake: c.amount, doubled: false, stage: 'bettor' };
+  const bj = c.data.bj;
+  bj.hands[bettor].push(bjDraw(ctx)); bj.hands[house].push(bjDraw(ctx));
+  bj.hands[bettor].push(bjDraw(ctx)); bj.hands[house].push(bjDraw(ctx));
+  emit(ctx, 'challenge_round', `Blackjack: ${player(s, house).name} es la banca y reparte. ${player(s, bettor).name} apuesta ${fmt(bj.stake)}.`, house, { bj: 'deal' });
+  const b = bjValue(bj.hands[bettor]), h = bjValue(bj.hands[house]);
+  // Blackjack natural: se resuelve enseguida
+  if (b.total === 21 || h.total === 21) return bjResolve(ctx);
+}
+
+/** La banca juega sola: pide hasta 17 (se planta con 17 blando también), y se compara. */
+function bjResolve(ctx: Ctx) {
+  const s = ctx.s;
+  const c = s.challenge!;
+  const bj = c.data.bj!;
+  bj.hidden = false;
+  bj.stage = 'house';
+  const bettor = bjValue(bj.hands[bj.bettor]);
+  if (bettor.total <= 21) {
+    while (bjValue(bj.hands[bj.house]).total < 17) bj.hands[bj.house].push(bjDraw(ctx));
+  }
+  const house = bjValue(bj.hands[bj.house]);
+  bj.totals = { [bj.bettor]: bettor.total, [bj.house]: house.total };
+  bj.stage = 'done';
+  const natural = (h: number[]) => h.length === 2 && bjValue(h).total === 21;
+  const bName = player(s, bj.bettor).name, hName = player(s, bj.house).name;
+  if (bettor.total > 21) { bj.result = 'house'; c.amount = bj.stake; return finishChallenge(ctx, bj.house, `${bName} se pasó con ${bettor.total}`); }
+  if (natural(bj.hands[bj.bettor]) && !natural(bj.hands[bj.house])) {
+    bj.result = 'blackjack'; c.amount = Math.round(bj.stake * 1.5);
+    return finishChallenge(ctx, bj.bettor, `¡blackjack! paga 3 a 2`);
+  }
+  if (natural(bj.hands[bj.house]) && !natural(bj.hands[bj.bettor])) { bj.result = 'house'; c.amount = bj.stake; return finishChallenge(ctx, bj.house, `la banca tenía blackjack`); }
+  if (house.total > 21) { bj.result = 'bettor'; c.amount = bj.stake; return finishChallenge(ctx, bj.bettor, `la banca se pasó con ${house.total}`); }
+  if (bettor.total > house.total) { bj.result = 'bettor'; c.amount = bj.stake; return finishChallenge(ctx, bj.bettor, `${bettor.total} contra ${house.total}`); }
+  if (house.total > bettor.total) { bj.result = 'house'; c.amount = bj.stake; return finishChallenge(ctx, bj.house, `${hName} ${house.total} contra ${bettor.total}`); }
+  bj.result = 'push'; c.amount = bj.stake;
+  return finishChallenge(ctx, null, `empate a ${bettor.total}`);
+}
+
+function bjMove(ctx: Ctx, playerId: string, move: BjMove) {
+  const s = ctx.s;
+  const c = s.challenge!;
+  const bj = c.data.bj!;
+  if (bj.stage !== 'bettor') throw new RuleError('La mano ya está cerrada.');
+  if (playerId !== bj.bettor) throw new RuleError('Solo el que apuesta decide; la banca juega sola.');
+  const hand = bj.hands[bj.bettor];
+  const p = player(s, playerId);
+  if (move === 'double') {
+    if (hand.length !== 2) throw new RuleError('Solo podés doblar con las dos primeras cartas.');
+    if (p.cash < bj.stake * 2) throw new RuleError('No te alcanza para doblar.');
+    bj.stake *= 2; bj.doubled = true;
+    hand.push(bjDraw(ctx));
+    emit(ctx, 'challenge_round', `${p.name} dobla la apuesta a ${fmt(bj.stake)} y recibe una carta.`, playerId, { bj: 'double' });
+    return bjResolve(ctx);
+  }
+  if (move === 'hit') {
+    hand.push(bjDraw(ctx));
+    const v = bjValue(hand);
+    emit(ctx, 'challenge_round', `${p.name} pide carta: tiene ${v.total}.`, playerId, { bj: 'hit', total: v.total });
+    if (v.total >= 21) return bjResolve(ctx);
+    return;
+  }
+  emit(ctx, 'challenge_round', `${p.name} se planta con ${bjValue(hand).total}.`, playerId, { bj: 'stand' });
+  return bjResolve(ctx);
+}
+
+/** "Tipo" de una pregunta: sus primeras palabras. Sirve para no encadenar dos del mismo molde
+ *  ("¿Cuál es la capital del departamento de…" ×2 seguidas se siente repetido aunque no lo sea). */
+function triviaKind(q: string): string {
+  return q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, '').split(/\s+/).slice(0, 5).join(' ');
+}
+
+/**
+ * Elige la próxima pregunta: nunca repetida en la partida, evitando el mismo molde que la anterior,
+ * y con las opciones barajadas (en el banco la correcta suele ser la primera; así nadie aprende el truco).
+ */
+function drawTrivia(ctx: Ctx): { q: string; options: string[]; answer: number } {
+  const s = ctx.s;
+  const used = s.usedContent?.trivia ?? [];
+  const lastKind = used.length ? triviaKind(TRIVIA[used[used.length - 1]].q) : null;
+  let idx = pickUnused(ctx, 'trivia', TRIVIA.length);
+  for (let tries = 0; tries < 6 && lastKind && triviaKind(TRIVIA[idx].q) === lastKind; tries++) {
+    // devolvemos la elegida y probamos otra
+    s.usedContent.trivia = s.usedContent.trivia.filter(i => i !== idx);
+    idx = pickUnused(ctx, 'trivia', TRIVIA.length);
+  }
+  const t = TRIVIA[idx];
+  const order = shuffle([0, 1, 2, 3], s.seed);
+  s.seed = order.seed;
+  const options = order.items.map(i => t.options[i]);
+  return { q: t.q, options, answer: order.items.indexOf(t.answer) };
 }
 
 function nextTriviaQuestion(ctx: Ctx) {
   const c = ctx.s.challenge!;
-  const idx = pickUnused(ctx, 'trivia', TRIVIA.length);   // sin repetir en toda la partida
-  const t = TRIVIA[idx];
-  c.data.question = { q: t.q, options: [...t.options] };
+  const t = drawTrivia(ctx);
+  c.data.question = { q: t.q, options: t.options };
   c.data.answered = {};
   c.secret.answer = t.answer;
 }
 
-function challengeMove(ctx: Ctx, playerId: string, choice?: PptChoice, answer?: number) {
+function challengeMove(ctx: Ctx, playerId: string, choice?: PptChoice, answer?: number, bj?: BjMove) {
   const s = ctx.s;
   requirePlaying(ctx); requirePhase(ctx, 'CHALLENGE');
   const c = s.challenge!;
@@ -1591,6 +1724,10 @@ function challengeMove(ctx: Ctx, playerId: string, choice?: PptChoice, answer?: 
   const other = playerId === c.fromId ? c.toId! : c.fromId;
 
   switch (c.kind) {
+    case 'blackjack': {
+      if (!bj) throw new RuleError('Elegí pedir, plantarte o doblar.');
+      return bjMove(ctx, playerId, bj);
+    }
     case 'dados': {
       const rolls = c.data.rolls as Record<string, [number, number]>;
       if (rolls[playerId]) throw new RuleError('Ya tiraste. Esperá al rival.');
@@ -1678,14 +1815,14 @@ function finishChallenge(ctx: Ctx, winnerId: string | null, reason: string) {
     s.turnPhase = c.returnPhase;
     if (winnerId === r.payerId) {
       payer.stats.donWins++;
-      emit(ctx, 'rent_don_roll', `🎉 ${payer.name} ganó el doble o nada (${reason}) y no paga nada en ${name}.`, r.payerId, { win: true, amount: r.rent, to: r.ownerId, kind: c.kind });
+      emit(ctx, 'rent_don_roll', `🎉 ${payer.name} ganó el doble o nada (${reason}) y no paga nada en ${name}.`, r.payerId, { win: true, amount: r.rent, to: r.ownerId, kind: c.kind, bj: c.data.bj });
       return finishResolution(ctx);
     }
     if (!winnerId) {
       emit(ctx, 'rent_don_roll', `Empate en el doble o nada: ${payer.name} paga el alquiler normal.`, r.payerId, { win: false, amount: r.rent, to: r.ownerId, tie: true });
       return payRent(ctx, payer, owner, r.rent, name);
     }
-    emit(ctx, 'rent_don_roll', `💸 ${owner.name} ganó el doble o nada (${reason}): ${payer.name} paga ${fmt(r.rent * 2)}.`, r.payerId, { win: false, amount: r.rent * 2, to: r.ownerId, kind: c.kind });
+    emit(ctx, 'rent_don_roll', `💸 ${owner.name} ganó el doble o nada (${reason}): ${payer.name} paga ${fmt(r.rent * 2)}.`, r.payerId, { win: false, amount: r.rent * 2, to: r.ownerId, kind: c.kind, bj: c.data.bj });
     return payRent(ctx, payer, owner, r.rent * 2, `${name} (doble o nada)`);
   }
   if (winnerId) {
@@ -1696,9 +1833,9 @@ function finishChallenge(ctx: Ctx, winnerId: string | null, reason: string) {
     winner.cash += amt;
     winner.stats.challengesWon++;
     if (c.kind === 'trivia') winner.stats.triviaWins++;
-    emit(ctx, 'challenge_done', `¡${winner.name} ganó el desafío (${reason}) y cobra ${fmt(amt)} de ${loser.name}!`, winnerId, { kind: c.kind, winner: winnerId, loser: loserId, amount: amt, to: winnerId });
+    emit(ctx, 'challenge_done', `¡${winner.name} ganó el desafío (${reason}) y cobra ${fmt(amt)} de ${loser.name}!`, winnerId, { kind: c.kind, winner: winnerId, loser: loserId, amount: amt, to: winnerId, bj: c.data.bj });
   } else {
-    emit(ctx, 'challenge_done', `El desafío terminó sin ganador (${reason}). Nadie paga.`, undefined, { kind: c.kind, winner: null, amount: 0 });
+    emit(ctx, 'challenge_done', `El desafío terminó sin ganador (${reason}). Nadie paga.`, undefined, { kind: c.kind, winner: null, amount: 0, bj: c.data.bj });
   }
   s.challenge = null;
   s.turnPhase = c.returnPhase;
@@ -1907,6 +2044,17 @@ function arenaSetup(ctx: Ctx) {
     case 'cana': { d.taps = Object.fromEntries(a.players.map(id => [id, 0])); d.duration = 5000; return; }
     case 'barra': { d.attempts = Object.fromEntries(a.players.map(id => [id, [] as number[]])); return; }
     case 'cuantos': { const q = CUANTOS[pickUnused(ctx, 'cuantos', CUANTOS.length)]; d.q = q.q; d.unit = q.unit ?? ''; sec.answer = q.a; d.answers = {}; return; }
+    case 'bingo': {
+      // Cartón de 9 números distintos por jugador, bolillas barajadas en secreto
+      const all = Array.from({ length: BINGO_NUMBERS }, (_, i) => i + 1);
+      const cards: Record<string, number[]> = {};
+      for (const id of a.players) { const r = shuffle(all, s.seed); s.seed = r.seed; cards[id] = r.items.slice(0, BINGO_CARD).sort((x, y) => x - y); }
+      const order = shuffle(all, s.seed); s.seed = order.seed;
+      sec.order = order.items;
+      d.cards = cards; d.marked = Object.fromEntries(a.players.map(id => [id, []])); d.called = []; d.nextAt = null;
+      d.wrong = Object.fromEntries(a.players.map(id => [id, 0])); d.bingo = {}; d.strikes = Object.fromEntries(a.players.map(id => [id, []]));
+      return;
+    }
     case 'bomba': {
       d.lives = Object.fromEntries(a.players.map(id => [id, 1]));   // una sola vida: el primer boom te deja afuera
       d.turnIdx = 0; d.turn = a.alive[0]; d.used = []; d.level = 0;
@@ -1967,9 +2115,8 @@ function arenaSetup(ctx: Ctx) {
 
 function arenaNextTrivia(ctx: Ctx) {
   const a = ctx.s.arena!;
-  const idx = pickUnused(ctx, 'trivia', TRIVIA.length);
-  const t = TRIVIA[idx];
-  a.data.question = { q: t.q, options: [...t.options] };
+  const t = drawTrivia(ctx);
+  a.data.question = { q: t.q, options: t.options };
   a.data.answered = {};
   a.data.correctOrder = [];
   a.data.reveal = null; a.data.revealUntil = null;
@@ -2037,6 +2184,33 @@ function arenaMove(ctx: Ctx, playerId: string, now: number, payload: Record<stri
       if (answers[playerId] !== undefined) throw new RuleError('Ya respondiste.');
       answers[playerId] = Number(payload.value);
       if (Object.keys(answers).length >= a.players.length) arenaFinish(ctx);
+      return;
+    }
+    case 'bingo': {
+      const cards = d.cards as Record<string, number[]>, marked = d.marked as Record<string, number[]>, called = d.called as number[];
+      const strikes = d.strikes as Record<string, number[]>, bingo = d.bingo as Record<string, number>, wrong = d.wrong as Record<string, number>;
+      if (bingo[playerId] !== undefined) throw new RuleError('Ya cantaste bingo.');
+      if (payload.bingo === true) {
+        const card = cards[playerId];
+        const ok = card.every(n => marked[playerId].includes(n));
+        if (!ok) { wrong[playerId]++; throw new RuleError('Te falta marcar números: ¡no es bingo!'); }
+        bingo[playerId] = now;
+        emit(ctx, 'arena_round', `🎱 ¡BINGO! ${p.name} completó el cartón.`, playerId, { bingo: true });
+        // Cierra el juego: el primero en cantar bingo gana
+        arenaFinish(ctx);
+        return;
+      }
+      const n = Number(payload.mark);
+      if (!cards[playerId].includes(n)) throw new RuleError('Ese número no está en tu cartón.');
+      if (marked[playerId].includes(n)) return;
+      if (!called.includes(n)) {
+        // Marcó una bolilla que todavía no salió: se le tacha (desmarca) su última marca y suma error
+        wrong[playerId]++;
+        const last = marked[playerId].pop();
+        if (last !== undefined) strikes[playerId].push(last);
+        throw new RuleError(`El ${n} todavía no salió: perdés una marca.`);
+      }
+      marked[playerId].push(n);
       return;
     }
     case 'bomba': {
@@ -2530,6 +2704,15 @@ function arenaTick(ctx: Ctx, now: number) {
     case 'cana': if (elapsed >= (d.duration as number) + 1500) arenaFinish(ctx); return;
     case 'barra': if (elapsed >= 25000) arenaFinish(ctx); return;
     case 'cuantos': if (elapsed >= 20000) arenaFinish(ctx); return;
+    case 'bingo': {
+      const called = d.called as number[], order = a.secret.order as number[];
+      if (d.nextAt === null) { d.nextAt = now + 800; return; }
+      if (now >= (d.nextAt as number)) {
+        if (called.length < order.length) { called.push(order[called.length]); d.nextAt = now + BINGO_INTERVAL_MS; }
+        else if (now >= (d.nextAt as number) + 6000) arenaFinish(ctx);   // salieron todas: 6 s más para marcar y cantar
+      }
+      return;
+    }
     case 'bomba': {
       if (now - (d.turnStartedAt as number) >= (a.secret.fuse as number)) {
         const victim = d.turn as string;
@@ -2613,6 +2796,11 @@ function arenaRanking(a: NonNullable<GameState['arena']>): string[] {
     case 'cana': return byScoreDesc(id => (d.taps as Record<string, number>)[id] ?? 0);
     case 'barra': return byScoreDesc(id => { const at = (d.attempts as Record<string, number[]>)[id]; return at.length ? Math.min(...at) : 999; }, true);
     case 'cuantos': return byScoreDesc(id => { const v = (d.answers as Record<string, number>)[id]; return v === undefined ? 1e12 : Math.abs(v - (a.secret.answer as number)); }, true);
+    case 'bingo': {
+      const bingo = d.bingo as Record<string, number>, marked = d.marked as Record<string, number[]>, wrong = d.wrong as Record<string, number>;
+      // primero los que cantaron bingo (más temprano gana), después por números marcados, desempate: menos errores
+      return byScoreDesc(id => (bingo[id] !== undefined ? 1e6 - Math.max(0, bingo[id] - (a.startedAt ?? 0)) / 10 : 0) + marked[id].length * 10 - wrong[id]);
+    }
     case 'penales': return byScoreDesc(id => (d.goals as Record<string, number>)[id] * 1000 + (d.shots as Record<string, { power: number }[]>)[id].reduce((n, x) => n + x.power, 0));
     case 'bomba': case 'oeste': case 'rayo': case 'globos': case 'ruleta': return [...a.alive, ...[...a.eliminated].reverse()];
     case 'sapos': {
@@ -3004,7 +3192,7 @@ export function applyAction(state: GameState, action: Action): { state: GameStat
     case 'CHALLENGE_PROPOSE': challengePropose(ctx, action.playerId, action.toId, action.kind, action.amount); break;
     case 'CHALLENGE_ACCEPT': challengeAnswer(ctx, action.playerId, true); break;
     case 'CHALLENGE_REJECT': challengeAnswer(ctx, action.playerId, false); break;
-    case 'CHALLENGE_MOVE': challengeMove(ctx, action.playerId, action.choice, action.answer); break;
+    case 'CHALLENGE_MOVE': challengeMove(ctx, action.playerId, action.choice, action.answer, action.bj); break;
     case 'CHALLENGE_GO': challengeGo(ctx); break;
     case 'CHALLENGE_CANCEL': challengeCancel(ctx, action.playerId); break;
     case 'ARENA_VOTE': arenaVote(ctx, action.playerId, action.option); break;

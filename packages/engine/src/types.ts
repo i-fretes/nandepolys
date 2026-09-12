@@ -100,7 +100,7 @@ export type TurnPhase =
 // ---------------------------------------------------------------------------
 export type ArenaGame =
   | 'trivia' | 'cana' | 'barra' | 'cuantos' | 'bomba' | 'sapos' | 'oeste' | 'rayo' | 'penales' | 'globos' | 'dibujo'
-  | 'cartas' | 'borrosa' | 'cadena' | 'ruleta' | 'bomba2';
+  | 'cartas' | 'borrosa' | 'cadena' | 'ruleta' | 'bomba2' | 'bingo';
 
 export interface ArenaState {
   stage: 'vote' | 'play' | 'done';
@@ -168,7 +168,9 @@ export interface RentOfferState {
   accepted: boolean;           // el dueño aceptó: falta que el que paga tire los dados
 }
 
-export type ChallengeKind = 'dados' | 'ppt' | 'trivia' | 'terere';
+export type ChallengeKind = 'dados' | 'ppt' | 'trivia' | 'terere' | 'blackjack';
+/** Jugadas del apostador en el blackjack. */
+export type BjMove = 'hit' | 'stand' | 'double';
 export type PptChoice = 'piedra' | 'papel' | 'tijera';
 export interface TriviaQuestion { q: string; options: [string, string, string, string]; answer: number }
 export interface ChallengeState {
@@ -191,6 +193,17 @@ export interface ChallengeState {
     qIndex?: number;
     answered?: Record<string, number>;       // trivia: respuestas ya dadas en la pregunta actual
     go?: boolean;                            // terere: ya apareció la señal
+    /** Blackjack: la banca reparte y juega sola; el apostador decide. Las cartas son 0..51 (palo = ÷13, valor = mod 13). */
+    bj?: {
+      house: string; bettor: string;
+      hands: Record<string, number[]>;
+      hidden: boolean;                       // la segunda carta de la banca sigue tapada
+      stake: number;                         // apuesta en juego (se duplica al doblar)
+      doubled: boolean;
+      stage: 'bettor' | 'house' | 'done';
+      result?: 'bettor' | 'house' | 'push' | 'blackjack';
+      totals?: Record<string, number>;
+    };
     winnerId?: string | null;
     reason?: string;
   };
@@ -200,6 +213,7 @@ export interface ChallengeState {
     choices?: Record<string, PptChoice>;
     answer?: number;
     used?: number[];
+    deck?: number[];                          // blackjack: mazo barajado, se saca del final
   };
 }
 
@@ -327,7 +341,7 @@ export type Action =
   | { type: 'CHALLENGE_PROPOSE'; playerId: string; toId: string; kind: ChallengeKind; amount: number }
   | { type: 'CHALLENGE_ACCEPT'; playerId: string }
   | { type: 'CHALLENGE_REJECT'; playerId: string }
-  | { type: 'CHALLENGE_MOVE'; playerId: string; choice?: PptChoice; answer?: number }
+  | { type: 'CHALLENGE_MOVE'; playerId: string; choice?: PptChoice; answer?: number; bj?: BjMove }
   | { type: 'CHALLENGE_GO'; playerId: string }        // solo servidor: señal del tereré
   | { type: 'CHALLENGE_CANCEL'; playerId: string }    // anfitrión/servidor: anula sin pagos
   // Arena

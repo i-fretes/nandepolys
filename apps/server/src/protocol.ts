@@ -85,10 +85,10 @@ export const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('RENT_DON_PROPOSE') }),
   z.object({ type: z.literal('RENT_DON_ACCEPT') }),
   z.object({ type: z.literal('RENT_DON_REJECT') }),
-  z.object({ type: z.literal('CHALLENGE_PROPOSE'), toId: z.string(), kind: z.enum(['dados', 'ppt', 'trivia', 'terere']), amount: z.number().int().min(0).max(100000) }),
+  z.object({ type: z.literal('CHALLENGE_PROPOSE'), toId: z.string(), kind: z.enum(['dados', 'ppt', 'trivia', 'terere', 'blackjack']), amount: z.number().int().min(0).max(100000) }),
   z.object({ type: z.literal('CHALLENGE_ACCEPT') }),
   z.object({ type: z.literal('CHALLENGE_REJECT') }),
-  z.object({ type: z.literal('CHALLENGE_MOVE'), choice: z.enum(['piedra', 'papel', 'tijera']).optional(), answer: z.number().int().min(0).max(3).optional() }),
+  z.object({ type: z.literal('CHALLENGE_MOVE'), choice: z.enum(['piedra', 'papel', 'tijera']).optional(), answer: z.number().int().min(0).max(3).optional(), bj: z.enum(['hit', 'stand', 'double']).optional() }),
   z.object({ type: z.literal('CHALLENGE_CANCEL') }),
   // La Arena (ARENA_START / ARENA_TICK / ARENA_END los dispara el servidor)
   z.object({ type: z.literal('ARENA_VOTE'), option: z.number().int().min(0).max(2) }),

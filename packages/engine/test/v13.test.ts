@@ -412,8 +412,8 @@ describe('v1.3.4: juegos nuevos de la Arena', () => {
   }
   const D = (s: GameState) => s.arena!.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  it('hay 16 juegos y los de 3+ no se ofrecen de a dos', () => {
-    expect(ARENA_GAMES).toHaveLength(16);
+  it('hay 17 juegos y los de 3+ no se ofrecen de a dos', () => {
+    expect(ARENA_GAMES).toHaveLength(17);
     for (let seed = 1; seed < 30; seed++) {
       let s = makeGame(2, { arena: true }, seed);
       const a = cur(s).id;

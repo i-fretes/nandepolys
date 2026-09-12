@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { challengeName, tile, type ChallengeKind, type PptChoice } from '@nandepoly/engine';
+import { bjValue, challengeName, tile, type ChallengeKind, type PptChoice } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { money, tokenEmoji } from '../format';
 import { sfx } from '../sound';
@@ -11,6 +11,7 @@ const KINDS: { id: ChallengeKind; icon: string; desc: string }[] = [
   { id: 'ppt', icon: '✊', desc: 'Piedra, papel o tijera al mejor de tres.' },
   { id: 'trivia', icon: '🧠', desc: 'Pregunta sobre Paraguay. El primero que acierta gana.' },
   { id: 'terere', icon: '🧉', desc: 'Cuando aparezca el tereré, tocá primero. Si te adelantás, perdés.' },
+  { id: 'blackjack', icon: '🃏', desc: 'Vos sos la banca y el rival apuesta. Pide, se planta o dobla; la banca pide hasta 17. Blackjack paga 3 a 2.' },
 ];
 const PPT: { id: PptChoice; icon: string }[] = [{ id: 'piedra', icon: '✊' }, { id: 'papel', icon: '✋' }, { id: 'tijera', icon: '✌️' }];
 
@@ -33,7 +34,7 @@ export default function ChallengeDialog() {
   useEffect(() => {
     if (!lastDone) return;
     setResult(lastDone);
-    const id = setTimeout(() => setResult(r => (r?.id === lastDone.id ? null : r)), 4500);
+    const id = setTimeout(() => setResult(r => (r?.id === lastDone.id ? null : r)), (lastDone.data as { kind?: string }).kind === 'blackjack' ? 8000 : 4500);
     return () => clearTimeout(id);
   }, [lastDone?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -43,10 +44,11 @@ export default function ChallengeDialog() {
 
   // Resultado final (splash)
   if (result && !c) {
-    const d = result.data as { winner: string | null; loser?: string; amount: number; kind: ChallengeKind };
+    const d = result.data as { winner: string | null; loser?: string; amount: number; kind: ChallengeKind; bj?: NonNullable<Ch>['data']['bj'] };
     const iWon = d.winner === me, iLost = d.loser === me;
     return (
-      <Modal open onClose={() => setResult(null)} width="max-w-md">
+      <Modal open onClose={() => setResult(null)} width={d.bj ? 'max-w-lg' : 'max-w-md'}>
+        {d.bj && <BjFinal bj={d.bj} name={name} />}
         <div className="vs-splash text-center">
           <div className="text-6xl">{d.winner ? '🏆' : '🤝'}</div>
           <h2 className={`mt-2 text-2xl font-black ${iWon ? 'text-emerald-600' : iLost ? 'text-red-600' : ''}`}>
@@ -103,6 +105,7 @@ export default function ChallengeDialog() {
       {c.status === 'playing' && c.kind === 'trivia' && <Trivia c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
       {c.status === 'playing' && c.kind === 'terere' && <Terere c={c} iAmIn={iAmIn} act={act} />}
       {c.status === 'playing' && c.kind === 'dados' && <Dados c={c} me={me} iAmIn={iAmIn} act={act} name={name} />}
+      {c.status === 'playing' && c.kind === 'blackjack' && <Blackjack c={c} me={me} act={act} name={name} />}
     </Modal>
   );
 }
@@ -311,6 +314,101 @@ function Terere({ c, iAmIn, act }: { c: NonNullable<ReturnType<typeof useStore.g
         </button>
       )}
       {!iAmIn && <p className="mt-2 text-center text-sm text-ink/60">Mirando el duelo de reflejos…</p>}
+    </div>
+  );
+}
+
+
+// --- Blackjack ---------------------------------------------------------------------------------
+const SUITS = ['♠', '♥', '♦', '♣'];
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+/** Una carta de la baraja francesa; `hidden` la muestra boca abajo. */
+function BjCard({ card, hidden, delay }: { card: number; hidden?: boolean; delay?: number }) {
+  const suit = SUITS[Math.floor(card / 13)], rank = RANKS[card % 13];
+  const red = suit === '♥' || suit === '♦';
+  return (
+    <div className={`bjcard ${hidden ? 'hidden' : ''} ${red ? 'red' : ''}`} style={{ animationDelay: `${delay ?? 0}ms` }}>
+      {hidden ? <span className="bj-back">🇵🇾</span> : (<>
+        <span className="bj-corner">{rank}<small>{suit}</small></span>
+        <span className="bj-suit">{suit}</span>
+        <span className="bj-corner flip">{rank}<small>{suit}</small></span>
+      </>)}
+    </div>
+  );
+}
+
+function Blackjack({ c, me, act, name }: { c: Ch; me: string | null; act: (a: Record<string, unknown> & { type: string }) => Promise<boolean>; name: (id: string | null | undefined) => string }) {
+  const bj = c!.data.bj;
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setBusy(false); }, [bj?.hands, bj?.stage]);
+  useEffect(() => { sfx.card(); }, [bj?.hands[bj?.bettor ?? '']?.length, bj?.hands[bj?.house ?? '']?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!bj) return null;
+  const iBet = me === bj.bettor;
+  const iHouse = me === bj.house;
+  const my = bj.hands[bj.bettor], hs = bj.hands[bj.house];
+  const myV = bjValue(my);
+  const houseShown = bj.hidden ? bjValue([hs[0]]) : bjValue(hs);
+  const canDouble = bj.stage === 'bettor' && my.length === 2;
+  const play = (bjMove: 'hit' | 'stand' | 'double') => { setBusy(true); void act({ type: 'CHALLENGE_MOVE', bj: bjMove }); };
+  const total = (v: { total: number; soft: boolean }, done: boolean) => v.total > 21 ? `${v.total} · se pasó` : v.total === 21 && done ? '21' : v.soft && !done ? `${v.total} (o ${v.total - 10})` : String(v.total);
+
+  return (
+    <div className="bjtable mt-4">
+      <div className="bj-row">
+        <div className="bj-label">
+          <b>{name(bj.house)}</b> · la banca {bj.hidden ? <span className="opacity-70">muestra {houseShown.total}</span> : <span>tiene <b>{total(bjValue(hs), true)}</b></span>}
+        </div>
+        <div className="bj-hand">{hs.map((card, i) => <BjCard key={`${card}-${i}`} card={card} hidden={bj.hidden && i === 1} delay={i * 120} />)}</div>
+      </div>
+      <div className="bj-mid">
+        <span className="bj-stake">En juego: {money(bj.stake)}{bj.doubled ? ' (doblada)' : ''}</span>
+        {bj.stage === 'done' && bj.result && (
+          <span className={`bj-result reveal ${bj.result === 'house' ? 'lose' : bj.result === 'push' ? 'push' : 'win'}`}>
+            {bj.result === 'blackjack' ? '¡BLACKJACK! paga 3 a 2' : bj.result === 'bettor' ? `Gana ${name(bj.bettor)}` : bj.result === 'push' ? 'Empate: nadie paga' : `Gana la banca`}
+          </span>
+        )}
+      </div>
+      <div className="bj-row">
+        <div className="bj-label"><b>{name(bj.bettor)}</b> · apuesta · tiene <b>{total(myV, bj.stage !== 'bettor')}</b></div>
+        <div className="bj-hand">{my.map((card, i) => <BjCard key={`${card}-${i}`} card={card} delay={i * 120} />)}</div>
+      </div>
+
+      {bj.stage === 'bettor' && iBet && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button data-bj="hit" className="duel-btn quiero" disabled={busy} onClick={() => play('hit')}>Pedir<span className="duel-sub">una carta más</span></button>
+          <button data-bj="stand" className="duel-btn" style={{ background: 'linear-gradient(180deg,#3b82f6,#1e40af)' }} disabled={busy} onClick={() => play('stand')}>Plantarme<span className="duel-sub">con {myV.total}</span></button>
+          <button data-bj="double" className="duel-btn" style={{ background: 'linear-gradient(180deg,#f59e0b,#b45309)', opacity: canDouble ? 1 : .4 }} disabled={busy || !canDouble} onClick={() => play('double')}>Doblar<span className="duel-sub">{money(bj.stake * 2)} · una carta</span></button>
+        </div>
+      )}
+      {bj.stage === 'bettor' && iHouse && <p className="mt-3 text-center text-sm text-ink/60">Sos la banca: esperá la decisión de {name(bj.bettor)}. Después pedís hasta 17 automáticamente.</p>}
+      {bj.stage === 'bettor' && !iBet && !iHouse && <p className="mt-3 text-center text-sm text-ink/60">{name(bj.bettor)} está decidiendo…</p>}
+      <p className="mt-2 text-center text-[11px] text-ink/45">Los ases valen 11 o 1. Figuras valen 10. La banca pide hasta 17 y se planta. Empate devuelve la apuesta.</p>
+    </div>
+  );
+}
+
+/** Mesa final del blackjack (ya cerrada): las dos manos destapadas y el resultado. */
+function BjFinal({ bj, name }: { bj: NonNullable<NonNullable<Ch>['data']['bj']>; name: (id: string | null | undefined) => string }) {
+  const hs = bj.hands[bj.house], my = bj.hands[bj.bettor];
+  return (
+    <div className="bjtable mb-3">
+      <div className="bj-row">
+        <div className="bj-label"><b>{name(bj.house)}</b> · la banca · <b>{bjValue(hs).total}</b>{bjValue(hs).total > 21 ? ' · se pasó' : ''}</div>
+        <div className="bj-hand">{hs.map((card, i) => <BjCard key={`${card}-${i}`} card={card} delay={i * 90} />)}</div>
+      </div>
+      <div className="bj-mid">
+        <span className="bj-stake">Se jugó {money(bj.stake)}{bj.doubled ? ' (doblada)' : ''}</span>
+        {bj.result && (
+          <span className={`bj-result reveal ${bj.result === 'house' ? 'lose' : bj.result === 'push' ? 'push' : 'win'}`}>
+            {bj.result === 'blackjack' ? '¡BLACKJACK! paga 3 a 2' : bj.result === 'bettor' ? `Gana ${name(bj.bettor)}` : bj.result === 'push' ? 'Empate: nadie paga' : 'Gana la banca'}
+          </span>
+        )}
+      </div>
+      <div className="bj-row">
+        <div className="bj-label"><b>{name(bj.bettor)}</b> · apuesta · <b>{bjValue(my).total}</b>{bjValue(my).total > 21 ? ' · se pasó' : ''}</div>
+        <div className="bj-hand">{my.map((card, i) => <BjCard key={`${card}-${i}`} card={card} delay={i * 90} />)}</div>
+      </div>
     </div>
   );
 }

@@ -54,14 +54,30 @@ await a.click('button:has-text("Empezar partida")');
 await Promise.all([a, b].map(p => p.waitForSelector('.board')));
 
 const pages = { Ivan: a, 'Lucía': b };
-const turnOf = async () => (await a.locator('.center b').first().innerText()).replace('Turno de ', '');
+const turnOf = async () => {
+  // esperamos a que el estado esté listo para tirar y leemos el turno del estado (no del DOM, que puede ir atrasado)
+  try {
+    await a.waitForFunction(() => { const s = window.__nandepoly.store.getState(); return s.state?.turnPhase === 'AWAITING_ROLL' && !s.moving; }, null, { timeout: 15000, polling: 150 });
+  } catch (e) {
+    console.log('DEBUG turnOf:', JSON.stringify(await a.evaluate(() => { const s = window.__nandepoly.store.getState(); return { phase: s.state?.turnPhase, moving: s.moving, paused: s.movePaused, casino: !!s.state?.casino, cur: s.state?.players[s.state.currentPlayerIndex]?.name }; })));
+    console.log('DEBUG botones a:', await a.locator('button:visible').allInnerTexts());
+    console.log('DEBUG botones b:', await b.locator('button:visible').allInnerTexts());
+    throw e;
+  }
+  return a.evaluate(() => { const s = window.__nandepoly.store.getState().state; return s.players[s.currentPlayerIndex].name; });
+};
 
 let wins = 0, losses = 0;
 for (let i = 0; i < ROUNDS; i++) {
   const p = pages[await turnOf()];
   const rival = p === a ? b : a;
   await dbg(p, { position: 36, dice: [1, 2], cash: 5000 });
-  await click(p, 'Tirar dados');
+  try { await click(p, 'Tirar dados'); } catch (e) {
+    const bar = await p.locator('[data-actionbar]').innerText().catch(() => '?');
+    const st = await p.evaluate(() => { const s = window.__nandepoly.store.getState(); return { phase: s.state.turnPhase, moving: s.moving, paused: s.movePaused, card: !!s.cardModal, cur: s.state.players[s.state.currentPlayerIndex].name, me: s.state.players.find(x => x.id === s.playerId)?.name }; });
+    console.log('DEBUG barra:', bar, JSON.stringify(st));
+    throw e;
+  }
   await p.waitForSelector('button:has-text("Apostar")', { timeout: 10000 });
   // La mesa está abierta para todos. En una de cada dos rondas el rival también apuesta
   // (además de probar el modo multijugador, mueve la semilla y así no sale siempre el mismo número).
@@ -113,9 +129,13 @@ for (let i = 0; i < ROUNDS; i++) {
   if (i < 3) await p.screenshot({ path: `${OUT}/ruleta-${i + 1}-${verdict}.png` });
 
   await click(p, 'Listo, salgo del Casino');
-  await p.waitForSelector('button:has-text("Terminar turno")', { timeout: 8000 });
-  await click(p, 'Terminar turno');
-  await a.waitForTimeout(250);
+  // terminar el turno (reintenta si el clic cayó mientras se cerraba la mesa)
+  for (let k = 0; k < 6; k++) {
+    const ph = await p.evaluate(() => window.__nandepoly.store.getState().state.turnPhase);
+    if (ph === 'AWAITING_ROLL') break;
+    if (ph === 'END_TURN') { try { await p.locator('button:not([disabled])', { hasText: /Terminar turno/ }).first().click({ force: true, timeout: 2000 }); } catch {} }
+    await p.waitForTimeout(500);
+  }
 }
 
 log(`\nResultados: ${wins} ganadas / ${losses} perdidas de ${ROUNDS}`);

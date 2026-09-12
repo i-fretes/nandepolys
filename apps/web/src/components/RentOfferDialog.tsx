@@ -92,7 +92,7 @@ export default function RentOfferDialog() {
       {o!.proposed && (
         iOwn ? (
           <div className="mt-5">
-            <p className="text-center font-semibold">{payer.name} te propone <b>doble o nada</b>: lo definen en un mini-desafío mano a mano (dados, piedra-papel-tijera, trivia o tereré, al azar). Si gana él no te paga nada; si ganás vos, te paga <b>{money(o!.rent * 2)}</b>.</p>
+            <p className="text-center font-semibold">{payer.name} te propone <b>doble o nada</b>: lo definen en un mini-desafío mano a mano (dados, piedra-papel-tijera, trivia, tereré o blackjack —ahí la banca sos vos—, al azar). Si gana él no te paga nada; si ganás vos, te paga <b>{money(o!.rent * 2)}</b>.</p>
             <p className="mt-1 text-center text-xs text-ink/50">Empate: te paga el alquiler normal. Vos elegís.</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <button className="btn-ghost py-3" onClick={() => act({ type: 'RENT_DON_REJECT' })}>No, que pague {money(o!.rent)}</button>

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { BOARD, GROUP_COLORS, isProperty, netWorth, rentFor, type GameState, type PropertyTile } from '@nandepoly/engine';
 import { useStore } from '../store';
 import { money } from '../format';
@@ -12,6 +13,22 @@ export default function PlayerPanel() {
   const streak = useStore(s => s.streak);
   const current = state.players[state.currentPlayerIndex];
   const isHost = state.hostId === me;
+  // La ficha del que cobra o paga se sacude un instante
+  const prevCash = useRef<Record<string, number>>({});
+  const [wobble, setWobble] = useState<Record<string, 'up' | 'down'>>({});
+  useEffect(() => {
+    const changes: Record<string, 'up' | 'down'> = {};
+    for (const p of state.players) {
+      const before = prevCash.current[p.id];
+      if (before !== undefined && before !== p.cash) changes[p.id] = p.cash > before ? 'up' : 'down';
+      prevCash.current[p.id] = p.cash;
+    }
+    if (Object.keys(changes).length) {
+      setWobble(w => ({ ...w, ...changes }));
+      const t = setTimeout(() => setWobble(w => { const n = { ...w }; for (const k of Object.keys(changes)) delete n[k]; return n; }), 750);
+      return () => clearTimeout(t);
+    }
+  }, [state.players]);
 
   return (
     <div className="space-y-2">
@@ -21,7 +38,7 @@ export default function PlayerPanel() {
         return (
           <div key={p.id} data-player-card={p.id} className={`card relative p-3 transition ${isCurrent ? 'ring-2 ring-py-red' : ''} ${p.bankrupt ? 'opacity-50 grayscale' : ''}`}>
             <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white" style={{ boxShadow: `0 0 0 3px ${p.color}` }}><PlayerToken token={p.token} color={p.color} size="30px" /></span>
+              <span className={`avatar grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white ${wobble[p.id] ? `wobble-${wobble[p.id]}` : ''}`} style={{ boxShadow: `0 0 0 3px ${p.color}` }}><PlayerToken token={p.token} color={p.color} size="30px" /></span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-bold">{p.name}</span>

@@ -44,12 +44,18 @@ export function NanduDie({ face, rolling, size }: { face: keyof typeof SPEED_FAC
   );
 }
 
+/** Trayectorias de tiro: los dados entran rodando desde distintos lados y frenan en el centro. */
+const THROWS = ['throw-left', 'throw-right', 'throw-top', 'throw-bottom', 'throw-spin', 'throw-bounce', 'throw-cross'];
+
 export default function Dice() {
   const dice = useStore(s => s.state?.dice ?? null);
   const speedDie = useStore(s => s.state?.speedDie ?? null);
   const speedOn = useStore(s => s.state?.settings.speedDie ?? false);
   const rollingUntil = useStore(s => s.rollingUntil);
   const [rolling, setRolling] = useState(false);
+  // Cada tirada elige una trayectoria distinta (al azar, pero fija durante esa tirada)
+  const throwKind = useRef(THROWS[0]);
+  useEffect(() => { if (rollingUntil > Date.now()) throwKind.current = THROWS[Math.floor(Math.random() * THROWS.length)]; }, [rollingUntil]);
 
   useEffect(() => {
     if (rollingUntil > Date.now()) {
@@ -60,10 +66,10 @@ export default function Dice() {
   }, [rollingUntil]);
 
   return (
-    <>
-      <Die3D value={dice?.[0] ?? null} rolling={rolling} />
-      {dice?.[1] !== 0 && <Die3D value={dice?.[1] ?? null} rolling={rolling} />}
-      {speedOn && <NanduDie face={speedDie} rolling={rolling} />}
-    </>
+    <div className={`dice-stage ${rolling ? `rolling ${throwKind.current}` : ''}`}>
+      <div className="die-slot d1"><Die3D value={dice?.[0] ?? null} rolling={rolling} /></div>
+      {dice?.[1] !== 0 && <div className="die-slot d2"><Die3D value={dice?.[1] ?? null} rolling={rolling} /></div>}
+      {speedOn && <div className="die-slot d3"><NanduDie face={speedDie} rolling={rolling} /></div>}
+    </div>
   );
 }

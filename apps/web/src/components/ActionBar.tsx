@@ -10,6 +10,7 @@ export default function ActionBar() {
   const setDialog = useStore(s => s.setDialog);
   const spectator = useStore(s => s.spectator);
   const moving = useMoving();
+  const cardOpen = useStore(s => !!s.cardModal);
   const current = state.players[state.currentPlayerIndex];
 
   if (spectator || !me) {
@@ -38,6 +39,9 @@ export default function ActionBar() {
 
   if (moving && state.phase === 'PLAYING') {
     return <Bar><span className="text-sm font-semibold animate-pulse">🚶 {current?.name} está avanzando…</span></Bar>;
+  }
+  if (cardOpen && state.phase === 'PLAYING') {
+    return <Bar><span className="text-sm font-semibold animate-pulse">🃏 Leyendo la carta…</span></Bar>;
   }
   if (state.turnPhase === 'AUCTION') {
     return <Bar><span className="text-sm font-semibold">🔨 Subasta en curso</span></Bar>;
@@ -121,5 +125,5 @@ export default function ActionBar() {
 }
 
 function Bar({ children }: { children: React.ReactNode }) {
-  return <div className="card flex flex-wrap items-center justify-end gap-2 p-3">{children}</div>;
+  return <div data-actionbar className="card flex flex-wrap items-center justify-end gap-2 p-3">{children}</div>;
 }

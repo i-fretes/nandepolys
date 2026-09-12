@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ARENA_GAMES, ARENA_REWARDS, sapoPos, type ArenaGame, type ArenaState } from '@nandepoly/engine';
+import { ARENA_GAMES, ARENA_REWARDS, BINGO_CARD, BINGO_NUMBERS, sapoPos, type ArenaGame, type ArenaState } from '@nandepoly/engine';
 import { serverNow, useMe, useMoving, useStore } from '../store';
 import { money, tokenEmoji } from '../format';
 import { socket } from '../socket';
@@ -146,6 +146,7 @@ function Play({ a, meId }: { a: ArenaState; meId: string | null }) {
     case 'cana': return <Cana {...props} />;
     case 'barra': return <Barra {...props} />;
     case 'cuantos': return <Cuantos {...props} />;
+    case 'bingo': return <Bingo {...props} />;
     case 'bomba': return <Bomba {...props} />;
     case 'sapos': return <Sapos {...props} />;
     case 'oeste': return <Oeste {...props} />;
@@ -300,6 +301,72 @@ function Cuantos({ a, meId, participating }: GP) {
           <button className="btn-primary" type="submit" disabled={v.trim() === ''}>Enviar</button>
         </form>
       ) : <div className="mt-3 text-center text-sm text-ink/60">{mine !== undefined ? <>Dijiste <b>{mine}</b>. Esperando a los demás…</> : 'Mirando…'}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+function Bingo({ a, meId, participating }: GP) {
+  const act = useAct();
+  const d = a.data as D;
+  const state = useStore(s => s.state)!;
+  const cards = (d.cards ?? {}) as Record<string, number[]>;
+  const marked = (d.marked ?? {}) as Record<string, number[]>;
+  const called = (d.called ?? []) as number[];
+  const bingo = (d.bingo ?? {}) as Record<string, number>;
+  const strikes = (d.strikes ?? {}) as Record<string, number[]>;
+  const wrong = (d.wrong ?? {}) as Record<string, number>;
+  const my = meId ? cards[meId] ?? [] : [];
+  const myMarked = meId ? marked[meId] ?? [] : [];
+  const last = called[called.length - 1];
+  const complete = my.length > 0 && my.every(n => myMarked.includes(n));
+  const [shake, setShake] = useState<number | null>(null);
+  const prevLast = useRef<number | undefined>(undefined);
+  useEffect(() => { if (last !== undefined && last !== prevLast.current) { prevLast.current = last; sfx.tick(); } }, [last]);
+  const mark = async (n: number) => {
+    const ok = await move(act, { mark: n });
+    if (!ok) { setShake(n); sfx.lose(); setTimeout(() => setShake(null), 500); } else sfx.coin();
+  };
+  return (
+    <div>
+      <Header a={a} subtitle="Marcá tus números cuando salgan. Si marcás uno que no salió, perdés una marca. Completá el cartón y gritá ¡BINGO!" />
+      <Players a={a} render={id => (bingo[id] !== undefined ? '🎱 ¡BINGO!' : `${(marked[id] ?? []).length}/${BINGO_CARD}${(wrong[id] ?? 0) ? ` · ${wrong[id]}✘` : ''}`)} />
+
+      {/* Bolillero */}
+      <div className="bingo-drum mt-3">
+        <div className="bingo-last" key={last ?? 'none'}>{last ?? '·'}</div>
+        <div className="bingo-history">
+          {called.slice(0, -1).slice(-10).map(n => <span key={n} className="bingo-ball small">{n}</span>)}
+        </div>
+        <div className="bingo-count">{called.length}/{BINGO_NUMBERS} bolillas</div>
+      </div>
+
+      {participating ? (
+        <>
+          <div className="bingo-card mt-3">
+            {my.map(n => {
+              const on = myMarked.includes(n);
+              const struck = (strikes[meId!] ?? []).includes(n) && !on;
+              return (
+                <button key={n} data-bingo={n} disabled={on || bingo[meId!] !== undefined}
+                  className={`bingo-cell ${on ? 'on' : ''} ${shake === n ? 'shake' : ''} ${struck ? 'struck' : ''} ${called.includes(n) && !on ? 'hot' : ''}`}
+                  onClick={() => mark(n)}>{n}</button>
+              );
+            })}
+          </div>
+          {bingo[meId!] !== undefined ? <div className="mt-3 text-center text-xl font-black text-emerald-600">🎱 ¡Cantaste BINGO!</div>
+            : <button data-bingo-call className={`btn-primary mt-3 w-full py-3 text-xl ${complete ? 'breathe' : 'opacity-50'}`} onClick={() => move(act, { bingo: true })}>¡BINGO!</button>}
+        </>
+      ) : (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {a.players.map(id => (
+            <div key={id} className="rounded-xl bg-white/70 p-2 text-center text-xs">
+              <b>{state.players.find(p => p.id === id)?.name}</b>
+              <div className="mt-1 flex flex-wrap justify-center gap-1">{(cards[id] ?? []).map(n => <span key={n} className={`bingo-ball small ${(marked[id] ?? []).includes(n) ? 'on' : ''}`}>{n}</span>)}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

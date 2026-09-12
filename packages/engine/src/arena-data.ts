@@ -5,6 +5,7 @@ export const ARENA_GAMES: { id: ArenaGame; name: string; icon: string; desc: str
   { id: 'cana', name: 'Caña dulce', icon: '🍬', desc: 'Cinco segundos: tocá la pantalla la mayor cantidad de veces.', seconds: 8 },
   { id: 'barra', name: 'Frená la barra', icon: '🎯', desc: 'La aguja va y viene. Frenala lo más cerca del centro. Tres intentos.', seconds: 25 },
   { id: 'cuantos', name: '¿Cuántos hay?', icon: '🔢', desc: 'Una pregunta con número. El que más se acerca gana.', seconds: 20 },
+  { id: 'bingo', name: 'Bingo relámpago', icon: '🎱', desc: 'Cartón de 9 números. Van saliendo bolillas: marcá las tuyas rápido y gritá ¡BINGO! al completar. Marcar una que no salió te tacha una.', seconds: 45 },
   { id: 'bomba', name: 'Palabra bomba', icon: '💣', desc: 'Escribí una palabra que contenga la sílaba antes de que explote. Dos vidas.', seconds: 180 },
   { id: 'sapos', name: 'Carrera de sapos', icon: '🐸', desc: 'Los sapos saltan solos y cada vez más rápido; vos solo cambiás de carril. Charco = afuera. Primero en la meta gana.', seconds: 25 },
   { id: 'oeste', name: 'Duelo del Oeste', icon: '🤠', desc: 'Cuando suene la campana, tocá a quién disparar. El más rápido dispara primero.', seconds: 60 },

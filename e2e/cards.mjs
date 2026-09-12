@@ -22,15 +22,15 @@ await p.evaluate(() => {
   // la segunda carta llega mientras la primera está en pantalla
   window.__nandepoly.store.setState({ cardQueue: [...st.cardQueue, { card: { id: 'C2', deck: 'community', text: 'Segunda carta: cobrá ₲ 50.000.' }, playerId: ids[1] }] });
 });
-await p.waitForTimeout(400);
-const t1 = await p.locator('.flip').innerText();
+await p.waitForTimeout(900);
+const t1 = await p.locator('.cardface.front').innerText();
 const btn = await p.locator('button:has-text("Siguiente carta")').count();
 console.log('primera:', t1.replace(/\n/g, ' | '));
 console.log('boton de cola:', btn === 1 ? 'OK' : 'FALTA');
 await p.screenshot({ path: 'e2e/casino/carta-1.png' });
 await p.click('button:has-text("Siguiente carta")');
-await p.waitForTimeout(400);
-const t2 = await p.locator('.flip').innerText();
+await p.waitForTimeout(900);
+const t2 = await p.locator('.cardface.front').innerText();
 console.log('segunda:', t2.replace(/\n/g, ' | '));
 await p.screenshot({ path: 'e2e/casino/carta-2.png' });
 console.log(t1.includes('Primera') && t2.includes('Segunda') && btn === 1 ? 'OK' : 'FALLÓ');

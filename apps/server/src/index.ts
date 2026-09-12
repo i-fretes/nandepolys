@@ -75,6 +75,7 @@ const DUEL_IDLE_SECONDS = Number(process.env.DUEL_IDLE_SECONDS ?? 90);
 const CHALLENGE_ACCEPT_SECONDS = Number(process.env.CHALLENGE_ACCEPT_SECONDS ?? 15);
 const RENT_OFFER_SECONDS = Number(process.env.RENT_OFFER_SECONDS ?? 20);
 const CASINO_IDLE_SECONDS = Number(process.env.CASINO_IDLE_SECONDS ?? 75);
+const BLACKJACK_DECIDE_SECONDS = 25;
 const CHALLENGE_PLAY_SECONDS = Number(process.env.CHALLENGE_PLAY_SECONDS ?? 45);
 
 function ok<T>(data: T) { return { ok: true as const, ...data }; }
@@ -217,7 +218,9 @@ function afterStateChange(room: Room, before: GameState) {
       if (c.status === 'pending') arm(CHALLENGE_ACCEPT_SECONDS, { type: 'CHALLENGE_REJECT', playerId: c.toId! }, 'El desafío venció sin respuesta.');
       else if (c.status === 'pick') arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
       else if (c.status === 'playing') {
-        arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
+        // Blackjack: si el apostador no decide, se planta (no se anula la mano)
+        if (c.kind === 'blackjack' && c.data.bj?.stage === 'bettor') arm(BLACKJACK_DECIDE_SECONDS, { type: 'CHALLENGE_MOVE', playerId: c.data.bj.bettor, bj: 'stand' }, 'Se plantó por tiempo.');
+        else arm(CHALLENGE_PLAY_SECONDS, { type: 'CHALLENGE_CANCEL', playerId: s.hostId }, 'El desafío se anuló por tiempo.');
         if (c.kind === 'terere' && !c.data.go) {
           const wait = 1500 + Math.floor(Math.random() * 3000);
           t.go = setTimeout(() => { t.go = undefined; serverAction(room, { type: 'CHALLENGE_GO', playerId: s.hostId }); }, wait);

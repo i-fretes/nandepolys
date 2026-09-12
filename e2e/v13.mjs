@@ -78,7 +78,7 @@ const settle = async (untilTurnChanges = true) => {
     for (const p of [a, b, c]) {
       await p.mouse.click(5, 5).catch(() => {});
       await clickIf(p, 'Entendido');
-      await clickIf(p, 'No comprar') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Salir sin apostar') || await clickIf(p, 'Pagar alquiler') || await clickIf(p, 'Terminar turno');
+      await clickIf(p, 'No comprar') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Paso, no apuesto') || await clickIf(p, 'Listo, salgo del Casino') || await clickIf(p, 'Apostar') || await clickIf(p, 'Pagar alquiler') || await clickIf(p, 'Terminar turno');
     }
     await a.waitForTimeout(300);
   }
@@ -242,7 +242,7 @@ let spun = false;
 for (let i = 0; i < 80 && !spun; i++) {
   for (const p of [a, b, c]) {
     await clickIf(p, 'Entendido');
-    await clickIf(p, 'Tirar dados') || await clickIf(p, 'Intentar dobles') || await clickIf(p, 'No comprar') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Salir sin apostar') || await clickIf(p, 'Terminar turno');
+    await clickIf(p, 'Tirar dados') || await clickIf(p, 'Intentar dobles') || await clickIf(p, 'No comprar') || await clickIf(p, 'Pagar ₲ 200.000') || await clickIf(p, 'Me retiro') || await clickIf(p, 'Paso, no apuesto') || await clickIf(p, 'Listo, salgo del Casino') || await clickIf(p, 'Apostar') || await clickIf(p, 'Terminar turno');
     if ((await st(a)).turnPhase === 'ARENA') { for (const q of [a, b, c]) await q.locator('[data-arena-option="0"]').click({ force: true }).catch(() => {}); await playArena(); await a.waitForFunction(() => !window.__nandepoly.store.getState().state?.arena, null, { timeout: 30000, polling: 300 }).catch(() => {}); }
     if (await p.locator('text=ruleta de eventos').count()) { spun = true; await p.waitForTimeout(2200); await p.screenshot({ path: `${OUT}/ruleta-eventos.png` }); await p.waitForTimeout(2200); await p.screenshot({ path: `${OUT}/ruleta-resultado.png` }); }
   }

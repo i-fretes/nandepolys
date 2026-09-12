@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BOARD, EVENTS, GROUP_COLORS, SIDE_LEN, isProperty, type Tile as TileT } from '@nandepoly/engine';
 import AnimatedNumber from './AnimatedNumber';
 import { useStore } from '../store';
@@ -31,6 +31,14 @@ export default function Board() {
   const displayPos = useStore(s => s.displayPos);
   const highlight = useStore(s => s.highlightGroup);
   const me = useStore(s => s.playerId);
+  const movingId = useStore(s => s.moving);
+  // Al terminar de moverse, la ficha hace un rebotecito al caer
+  const [landed, setLanded] = useState<string | null>(null);
+  const prevMoving = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevMoving.current && !movingId) { const who = prevMoving.current; setLanded(who); const t = setTimeout(() => setLanded(l => (l === who ? null : l)), 450); return () => clearTimeout(t); }
+    prevMoving.current = movingId;
+  }, [movingId]);
   const current = state.players[state.currentPlayerIndex];
   const glowGroup = highlight && highlight.until > Date.now() ? highlight.group : null;
 
@@ -58,6 +66,7 @@ export default function Board() {
             key={t.id}
             className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''} ${t.type === 'street' && t.group === glowGroup ? 'glow-group' : ''} ${gain.has(t.id) ? 'trade-gain' : ''} ${lose.has(t.id) ? 'trade-lose' : ''}`}
             style={{ gridColumn: pos.col, gridRow: pos.row, ['--owner' as string]: owner?.color ?? 'transparent' }}
+            data-tile={t.id}
             onClick={() => setSelected(t.id)}
             title={t.name}
           >
@@ -70,8 +79,9 @@ export default function Board() {
               return (
                 <div className={`tokens n${shown.length + (extra ? 1 : 0)}`} title={quienes}>
                   {shown.map((p, i) => (
-                    <span key={p.id} className={`token ${p.id === current?.id ? 'current' : ''}`} style={{ zIndex: 3 + i }} title={p.name}>
-                      <PlayerToken token={p.token} color={p.color} title={p.name} />
+                    <span key={p.id} className={`token ${p.id === current?.id ? 'current' : ''} ${movingId === p.id ? 'hop' : ''} ${landed === p.id ? 'land' : ''}`} style={{ zIndex: 3 + i }} title={p.name}>
+                      <span className="token-shadow" />
+                      <PlayerToken token={p.token} color={p.color} title={p.name} noShadow />
                     </span>
                   ))}
                   {extra > 0 && <span className="token more" style={{ zIndex: 9 }} title={quienes}>+{extra}</span>}
@@ -199,7 +209,7 @@ function Center() {
       {state.phase === 'PLAYING' && current && (
         <div className="mt-[2.5cqw] flex items-center gap-[1cqw] rounded-full bg-white/80 px-[2cqw] py-[0.8cqw]" style={{ fontSize: '2cqw' }}>
           <PlayerToken token={current.token} color={current.color} size="3.4cqw" />
-          <b>Turno de {current.name}</b>
+          <b key={current.id} className="turn-slide inline-block">Turno de {current.name}</b>
           {secs !== null && <span className={`ml-[1cqw] font-mono ${secs <= 10 ? 'text-red-600' : 'text-ink/60'}`}>{secs}s</span>}
         </div>
       )}
@@ -224,10 +234,10 @@ function Center() {
           {last.text}
         </div>
       )}
-      <div className="absolute left-[3cqw] top-[3cqw] -rotate-12 rounded-[0.8cqw] bg-[#FFE082] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
+      <div data-deck="chance" className="deck absolute left-[3cqw] top-[3cqw] -rotate-12 rounded-[0.8cqw] bg-[#FFE082] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
         <b>Suerte</b><div className="opacity-70">{state.deckCounts.chance} cartas</div>
       </div>
-      <div className="absolute bottom-[8cqw] right-[3cqw] rotate-12 rounded-[0.8cqw] bg-[#B3E5FC] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
+      <div data-deck="community" className="deck absolute bottom-[8cqw] right-[3cqw] rotate-12 rounded-[0.8cqw] bg-[#B3E5FC] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
         <b>Cooperativa</b><div className="opacity-70">{state.deckCounts.community} cartas</div>
       </div>
     </div>

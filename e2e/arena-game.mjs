@@ -54,6 +54,16 @@ while (Date.now() - t0 < 120000) {
         case 'cadena': if (!d.reveal && !d.orders?.[id]) { for (const i of [2, 0, 3, 1]) await p.locator(`[data-chain="${i}"]`).click({ force: true, timeout: 500 }); await p.locator('[data-send-chain]').click({ force: true, timeout: 500 }); } break;
         case 'ruleta': if (d.turn === id) { await p.waitForTimeout(600); await p.locator('[data-ruleta="shoot"]').click({ force: true, timeout: 500 }); } break;
         case 'bomba2': if ((d.stage === 'plant' && id === d.saboteur) || (d.stage === 'cut' && id !== d.saboteur && d.cuts?.[id] === undefined)) await p.locator(`[data-wire="${Math.floor(Math.random() * 4)}"]`).click({ force: true, timeout: 500 }); break;
+        case 'bingo': {
+          if (d.bingo?.[id] !== undefined) break;
+          const card = d.cards?.[id] ?? [], marked = d.marked?.[id] ?? [], called = d.called ?? [];
+          // el primer jugador marca bien; el segundo a veces marca un número que no salió (para probar la penalización)
+          const pend = card.filter(n => called.includes(n) && !marked.includes(n));
+          if (pend.length) await p.locator(`[data-bingo="${pend[0]}"]`).click({ force: true, timeout: 500 });
+          else if (id === Object.keys(ids)[1] && Math.random() < 0.2) { const bad = card.find(n => !called.includes(n) && !marked.includes(n)); if (bad) await p.locator(`[data-bingo="${bad}"]`).click({ force: true, timeout: 500 }); }
+          if (card.length && card.every(n => marked.includes(n))) await p.locator('[data-bingo-call]').click({ force: true, timeout: 500 });
+          break;
+        }
       }
     } catch { /* no disponible ahora */ }
   }
