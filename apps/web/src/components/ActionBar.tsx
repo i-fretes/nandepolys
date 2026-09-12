@@ -1,5 +1,5 @@
 import { JAIL_FINE, legalActions, netWorth, tile, type GameState, type PropertyTile } from '@nandepoly/engine';
-import { useIsMyTurn, useMe, useMoving, useStore } from '../store';
+import { useIsMyTurn, useMe, useStore } from '../store';
 import { money } from '../format';
 
 export default function ActionBar() {
@@ -9,8 +9,6 @@ export default function ActionBar() {
   const act = useStore(s => s.act);
   const setDialog = useStore(s => s.setDialog);
   const spectator = useStore(s => s.spectator);
-  const moving = useMoving();
-  const cardOpen = useStore(s => !!s.cardModal);
   const current = state.players[state.currentPlayerIndex];
 
   if (spectator || !me) {
@@ -21,36 +19,15 @@ export default function ActionBar() {
   const mgmt = (
     <>
       <button className="btn-ghost btn-sm" onClick={() => setDialog('manage')} disabled={!(legal.has('BUILD') || legal.has('SELL_BUILDING') || legal.has('MORTGAGE') || legal.has('UNMORTGAGE'))}>🏠 Propiedades</button>
-      <button className={`btn-ghost btn-sm ${legal.has('TRADE_BUTT_IN') ? 'breathe !border-amber-400' : ''}`} onClick={() => setDialog('trade')}
-        disabled={!(legal.has('TRADE_PROPOSE') || legal.has('TRADE_BUTT_IN')) && !state.tradeRivals?.some(r => r.fromId === me.id)}
-        title={legal.has('TRADE_BUTT_IN') ? 'Hay un trato en la mesa: podés meterte de metiche' : 'Proponer un intercambio'}>
-        {legal.has('TRADE_BUTT_IN') ? '🕵️ Meterme' : '🤝 Intercambiar'}
-      </button>
-      {state.settings.challenges && <button className="btn-ghost btn-sm" onClick={() => setDialog('challenge')} disabled={!legal.has('CHALLENGE_PROPOSE')}>⚔️ Desafiar</button>}
-      {state.settings.duels && (
-        <button className={`btn-ghost btn-sm ${legal.has('DUEL_PROPOSE') ? 'duel-ready' : ''}`} onClick={() => setDialog('duel')} disabled={!legal.has('DUEL_PROPOSE')} title={me.duelTokens > 0 ? 'Tenés ficha de duelo' : 'Ganás una ficha cada 3 vueltas'}>
-          🔫 Duelo mayor {me.duelTokens > 0 && <span className="chip bg-yellow-300 text-black">×{me.duelTokens}</span>}
-        </button>
-      )}
+      <button className="btn-ghost btn-sm" onClick={() => setDialog('trade')} disabled={!legal.has('TRADE_PROPOSE')}>🤝 Intercambiar</button>
     </>
   );
 
   if (me.bankrupt) return <Bar><span className="text-sm text-ink/60">Quebraste. Podés seguir mirando la partida.</span></Bar>;
 
-  if (moving && state.phase === 'PLAYING') {
-    return <Bar><span className="text-sm font-semibold animate-pulse">🚶 {current?.name} está avanzando…</span></Bar>;
-  }
-  if (cardOpen && state.phase === 'PLAYING') {
-    return <Bar><span className="text-sm font-semibold animate-pulse">🃏 Leyendo la carta…</span></Bar>;
-  }
   if (state.turnPhase === 'AUCTION') {
     return <Bar><span className="text-sm font-semibold">🔨 Subasta en curso</span></Bar>;
   }
-  if (state.turnPhase === 'CASINO') return <Bar><span className="text-sm font-semibold">🎰 {current?.name} está en el Casino</span></Bar>;
-  if (state.turnPhase === 'CHALLENGE') return <Bar><span className="text-sm font-semibold">⚔️ Desafío en curso</span></Bar>;
-  if (state.turnPhase === 'RENT_OFFER') return <Bar><span className="text-sm font-semibold">💵 Cobro de alquiler en curso</span></Bar>;
-  if (state.turnPhase === 'ARENA') return <Bar><span className="text-sm font-semibold">🏟️ ¡La Arena está en juego!</span></Bar>;
-  if (state.turnPhase === 'DUEL') return <Bar><span className="text-sm font-semibold">🔫 Duelo mayor en curso</span></Bar>;
 
   if (!myTurn) {
     return (
@@ -75,7 +52,7 @@ export default function ActionBar() {
           ) : (
             <>
               {mgmt}
-              <button className="btn-primary breathe ml-auto px-6 text-lg" onClick={() => act({ type: 'ROLL' })}>🎲 Tirar dados</button>
+              <button className="btn-primary ml-auto px-6 text-lg" onClick={() => act({ type: 'ROLL' })}>🎲 Tirar dados</button>
             </>
           )}
         </Bar>
@@ -125,5 +102,5 @@ export default function ActionBar() {
 }
 
 function Bar({ children }: { children: React.ReactNode }) {
-  return <div data-actionbar className="card flex flex-wrap items-center justify-end gap-2 p-3">{children}</div>;
+  return <div className="card flex flex-wrap items-center justify-end gap-2 p-3">{children}</div>;
 }

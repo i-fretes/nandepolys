@@ -1,57 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
-import { BOARD, EVENTS, GROUP_COLORS, SIDE_LEN, isProperty, type Tile as TileT } from '@nandepoly/engine';
-import AnimatedNumber from './AnimatedNumber';
+import { useEffect, useState } from 'react';
+import { BOARD, GROUP_COLORS, isProperty, type Tile as TileT } from '@nandepoly/engine';
 import { useStore } from '../store';
-import { moneyShort } from '../format';
+import { moneyShort, tokenEmoji } from '../format';
 import Dice from './Dice';
-import { CardStack, House, Hotel, PlayerToken } from './Pieces';
 
-const N = SIDE_LEN + 1;            // casillas entre esquina y esquina (11): las esquinas son 0, 11, 22, 33
-const G = SIDE_LEN + 2;            // columnas/filas de la grilla (12)
-export function gridPos(i: number): { col: number; row: number } {
-  if (i <= N) return { row: G, col: G - i };                 // abajo, de derecha a izquierda
-  if (i <= 2 * N) return { col: 1, row: G - (i - N) };       // izquierda, subiendo
-  if (i <= 3 * N) return { row: 1, col: 1 + (i - 2 * N) };   // arriba, hacia la derecha
-  return { col: G, row: 1 + (i - 3 * N) };                   // derecha, bajando
+function gridPos(i: number): { col: number; row: number } {
+  if (i <= 10) return { row: 11, col: 11 - i };
+  if (i <= 20) return { col: 1, row: 21 - i };
+  if (i <= 30) return { row: 1, col: i - 19 };
+  return { col: 11, row: i - 29 };
 }
 function side(i: number): 'bottom' | 'left' | 'top' | 'right' {
-  if (i <= N) return 'bottom';
-  if (i <= 2 * N) return 'left';
-  if (i <= 3 * N) return 'top';
+  if (i <= 10) return 'bottom';
+  if (i <= 20) return 'left';
+  if (i <= 30) return 'top';
   return 'right';
 }
 
 const ICONS: Record<string, string> = {
-  go: '🚀', jail: '🚔', parking: '🅿️', gotojail: '👮', chance: '❓', community: '🤝', tax: '🧾', transport: '🚌', utility: '💡', casino: '🎰', arena: '🏟️',
+  go: '🚀', jail: '🚔', parking: '🅿️', gotojail: '👮', chance: '❓', community: '🤝', tax: '🧾', transport: '🚌', utility: '💡',
 };
 
 export default function Board() {
   const state = useStore(s => s.state)!;
   const setSelected = useStore(s => s.setSelectedTile);
   const displayPos = useStore(s => s.displayPos);
-  const highlight = useStore(s => s.highlightGroup);
-  const me = useStore(s => s.playerId);
-  const movingId = useStore(s => s.moving);
-  // Al terminar de moverse, la ficha hace un rebotecito al caer
-  const [landed, setLanded] = useState<string | null>(null);
-  const prevMoving = useRef<string | null>(null);
-  useEffect(() => {
-    if (prevMoving.current && !movingId) { const who = prevMoving.current; setLanded(who); const t = setTimeout(() => setLanded(l => (l === who ? null : l)), 450); return () => clearTimeout(t); }
-    prevMoving.current = movingId;
-  }, [movingId]);
   const current = state.players[state.currentPlayerIndex];
-  const glowGroup = highlight && highlight.until > Date.now() ? highlight.group : null;
-
-  // Intercambio en curso: verde lo que recibís, rojo lo que entregás
-  const tr = state.pendingTrade;
-  const gain = new Set<number>();
-  const lose = new Set<number>();
-  if (tr && me && (tr.fromId === me || tr.toId === me)) {
-    const mine = tr.fromId === me ? tr.receive : tr.give;      // lo que me llega
-    const theirs = tr.fromId === me ? tr.give : tr.receive;    // lo que entrego
-    for (const id of mine.properties) gain.add(id);
-    for (const id of theirs.properties) lose.add(id);
-  }
 
   return (
     <div className="board w-full">
@@ -59,35 +33,26 @@ export default function Board() {
         const pos = gridPos(t.id);
         const ps = isProperty(t) ? state.properties[t.id] : null;
         const owner = ps?.owner ? state.players.find(p => p.id === ps.owner) : null;
-        const corner = t.id % N === 0;
+        const corner = t.id % 10 === 0;
         const here = state.players.filter(p => !p.bankrupt && (displayPos[p.id] ?? p.position) === t.id);
         return (
           <div
             key={t.id}
-            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''} ${t.type === 'street' && t.group === glowGroup ? 'glow-group' : ''} ${gain.has(t.id) ? 'trade-gain' : ''} ${lose.has(t.id) ? 'trade-lose' : ''}`}
+            className={`tile side-${side(t.id)} ${corner ? 'corner' : ''} ${owner ? 'owned' : ''} ${ps?.mortgaged ? 'mortgaged' : ''}`}
             style={{ gridColumn: pos.col, gridRow: pos.row, ['--owner' as string]: owner?.color ?? 'transparent' }}
-            data-tile={t.id}
             onClick={() => setSelected(t.id)}
             title={t.name}
           >
-            <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} active={t.type === 'casino' ? state.settings.casino : t.type === 'arena' ? state.settings.arena : true} />
-            {here.length > 0 && (() => {
-              // Con muchas fichas en la misma casilla se muestran 2 y un globito "+N": así nunca se pisan
-              const shown = here.length > 3 ? here.slice(0, 2) : here;
-              const extra = here.length - shown.length;
-              const quienes = here.map(p => p.name).join(', ');
-              return (
-                <div className={`tokens n${shown.length + (extra ? 1 : 0)}`} title={quienes}>
-                  {shown.map((p, i) => (
-                    <span key={p.id} className={`token ${p.id === current?.id ? 'current' : ''} ${movingId === p.id ? 'hop' : ''} ${landed === p.id ? 'land' : ''}`} style={{ zIndex: 3 + i }} title={p.name}>
-                      <span className="token-shadow" />
-                      <PlayerToken token={p.token} color={p.color} title={p.name} noShadow />
-                    </span>
-                  ))}
-                  {extra > 0 && <span className="token more" style={{ zIndex: 9 }} title={quienes}>+{extra}</span>}
-                </div>
-              );
-            })()}
+            <TileContent t={t} houses={ps?.houses ?? 0} corner={corner} />
+            {here.length > 0 && (
+              <div className="tokens">
+                {here.map(p => (
+                  <span key={p.id} className={`token ${p.id === current?.id ? 'current' : ''}`} style={{ ['--c' as string]: p.color }} title={p.name}>
+                    {tokenEmoji(p.token)}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
@@ -96,40 +61,12 @@ export default function Board() {
   );
 }
 
-/** El nombre de la casilla, con la letra un poco más chica si es largo, para que entre entero. */
-function TileName({ name }: { name: string }) {
-  const cls = name.length > 17 ? 'name xlong' : name.length > 9 ? 'name long' : 'name';
-  return <div className={cls}>{name}</div>;
-}
-
-function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; corner: boolean; active?: boolean }) {
-  if (t.type === 'casino') {
-    return (
-      <>
-        <div className={`band ${active ? 'neon' : ''}`} style={{ background: active ? 'linear-gradient(90deg,#7c3aed,#db2777)' : '#cfd8dc' }}><span style={{ fontSize: '1.7cqw' }}>🎰</span></div>
-        <div className="body">
-          <div className="name">Casino</div>
-          <div className="price">{active ? '¡Apostá!' : 'Descanso'}</div>
-        </div>
-      </>
-    );
-  }
-  if (t.type === 'arena') {
-    return (
-      <>
-        <div className={`band ${active ? 'neon' : ''}`} style={{ background: active ? 'linear-gradient(90deg,#f59e0b,#ef4444)' : '#cfd8dc' }}><span style={{ fontSize: '1.7cqw' }}>🏟️</span></div>
-        <div className="body">
-          <div className="name">La Arena</div>
-          <div className="price">{active ? 'Todos juegan' : 'Descanso'}</div>
-        </div>
-      </>
-    );
-  }
+function TileContent({ t, houses, corner }: { t: TileT; houses: number; corner: boolean }) {
   if (corner) {
     return (
       <div className="body">
         <div style={{ fontSize: '3.2cqw' }}>{ICONS[t.type]}</div>
-        <TileName name={t.name} />
+        <div className="name">{t.name}</div>
         {t.type === 'go' && <div className="price">Cobrá 200 mil</div>}
         {t.type === 'jail' && <div className="price">Solo de visita</div>}
       </div>
@@ -139,10 +76,10 @@ function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; 
     return (
       <>
         <div className="band" style={{ background: GROUP_COLORS[t.group] }}>
-          {houses === 5 ? <Hotel /> : Array.from({ length: houses }).map((_, i) => <House key={i} />)}
+          {houses === 5 ? <span className="hotel" /> : Array.from({ length: houses }).map((_, i) => <span key={i} className="house" />)}
         </div>
         <div className="body">
-          <TileName name={t.name} />
+          <div className="name">{t.name}</div>
           <div className="price">{moneyShort(t.price)}</div>
         </div>
       </>
@@ -155,27 +92,15 @@ function TileContent({ t, houses, corner, active }: { t: TileT; houses: number; 
           <span style={{ fontSize: '1.8cqw' }}>{ICONS[t.type]}</span>
         </div>
         <div className="body">
-          <TileName name={t.name} />
+          <div className="name">{t.name}</div>
           <div className="price">{moneyShort(t.price)}</div>
-        </div>
-      </>
-    );
-  }
-  if (t.type === 'chance' || t.type === 'community') {
-    return (
-      <>
-        <div className="band cards" style={{ background: t.type === 'chance' ? '#FFE082' : '#B3E5FC' }}>
-          <CardStack kind={t.type} />
-        </div>
-        <div className="body">
-          <TileName name={t.name} />
         </div>
       </>
     );
   }
   return (
     <>
-      <div className="band" style={{ background: '#ECEFF1' }}>
+      <div className="band" style={{ background: t.type === 'chance' ? '#FFE082' : t.type === 'community' ? '#B3E5FC' : '#ECEFF1' }}>
         <span style={{ fontSize: '1.8cqw' }}>{ICONS[t.type]}</span>
       </div>
       <div className="body">
@@ -208,8 +133,8 @@ function Center() {
       </div>
       {state.phase === 'PLAYING' && current && (
         <div className="mt-[2.5cqw] flex items-center gap-[1cqw] rounded-full bg-white/80 px-[2cqw] py-[0.8cqw]" style={{ fontSize: '2cqw' }}>
-          <PlayerToken token={current.token} color={current.color} size="3.4cqw" />
-          <b key={current.id} className="turn-slide inline-block">Turno de {current.name}</b>
+          <span className="token !static" style={{ ['--c' as string]: current.color, width: '3.2cqw', height: '3.2cqw', fontSize: '2cqw' }}>{tokenEmoji(current.token)}</span>
+          <b>Turno de {current.name}</b>
           {secs !== null && <span className={`ml-[1cqw] font-mono ${secs <= 10 ? 'text-red-600' : 'text-ink/60'}`}>{secs}s</span>}
         </div>
       )}
@@ -218,26 +143,15 @@ function Center() {
           Pozo: {moneyShort(state.freeParkingPot)}
         </div>
       )}
-      {state.activeEvent && (() => { const ev = EVENTS.find(e => e.id === state.activeEvent!.id); return ev ? (
-        <div className="event-badge mt-[1cqw] rounded-full px-[2cqw] py-[0.5cqw] font-bold text-white" style={{ fontSize: '1.6cqw' }} title={ev.desc}>
-          {ev.icon} {ev.name}{state.activeEvent!.data?.number ? ` · nº ${state.activeEvent!.data.number}` : ''}
-        </div>
-      ) : null; })()}
-      {state.settings.jackpot && (
-        <div className="mt-[1cqw] rounded-full bg-gradient-to-r from-purple-700 to-pink-600 px-[2cqw] py-[0.5cqw] font-black text-yellow-300 shadow" style={{ fontSize: '1.7cqw', letterSpacing: '.05em' }} title="Doble seis se lo lleva">
-          🎰 JACKPOT <AnimatedNumber value={state.jackpot} format={n => '₲ ' + (n * 1000).toLocaleString('es-PY')} />
-          <span className="ml-[1cqw] font-semibold text-white/80" style={{ fontSize: '1.2cqw' }}>· sacá ⚅⚅ y es tuyo</span>
-        </div>
-      )}
       {last && (
         <div className="absolute bottom-[2cqw] left-[3cqw] right-[3cqw] rounded-[1cqw] bg-white/70 px-[1.5cqw] py-[0.8cqw] text-center leading-snug text-ink/80" style={{ fontSize: '1.6cqw' }}>
           {last.text}
         </div>
       )}
-      <div data-deck="chance" className="deck absolute left-[3cqw] top-[3cqw] -rotate-12 rounded-[0.8cqw] bg-[#FFE082] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
+      <div className="absolute left-[3cqw] top-[3cqw] -rotate-12 rounded-[0.8cqw] bg-[#FFE082] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
         <b>Suerte</b><div className="opacity-70">{state.deckCounts.chance} cartas</div>
       </div>
-      <div data-deck="community" className="deck absolute bottom-[8cqw] right-[3cqw] rotate-12 rounded-[0.8cqw] bg-[#B3E5FC] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
+      <div className="absolute bottom-[8cqw] right-[3cqw] rotate-12 rounded-[0.8cqw] bg-[#B3E5FC] px-[1.5cqw] py-[1cqw] shadow" style={{ fontSize: '1.6cqw' }}>
         <b>Cooperativa</b><div className="opacity-70">{state.deckCounts.community} cartas</div>
       </div>
     </div>

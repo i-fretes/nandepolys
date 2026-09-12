@@ -40,7 +40,3 @@ export function loadName(): string {
 export function saveName(name: string) {
   try { localStorage.setItem('nandepoly:name', name); } catch { /* ignore */ }
 }
-
-// Acceso para pruebas automatizadas (e2e) y depuración desde la consola del navegador
-declare global { interface Window { __nandepoly?: { socket: typeof socket } } }
-if (typeof window !== 'undefined') window.__nandepoly = { socket };

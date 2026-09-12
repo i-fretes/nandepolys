@@ -23,6 +23,3 @@ export function timeLeft(deadline: number | null, now: number): number | null {
   if (!deadline) return null;
   return Math.max(0, Math.ceil((deadline - now) / 1000));
 }
-
-/** Reacciones rápidas de la partida (tienen que coincidir con las del servidor). */
-export const REACTIONS = ['👏', '😂', '😱', '🔥', '🧉', '😭', '🤝', '💸'];

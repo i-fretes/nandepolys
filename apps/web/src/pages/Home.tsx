@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { PLAYER_COLORS, TOKENS, type TokenId } from '@nandepoly/engine';
-import { PlayerToken } from '../components/Pieces';
+import { TOKENS } from '@nandepoly/engine';
 import { connect, emitAck, loadName, saveName, saveSession } from '../socket';
 import { useStore, type RoomView } from '../store';
 
 export function TokenPicker({ value, onChange, taken = [] }: { value: string; onChange: (t: string) => void; taken?: string[] }) {
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-      {TOKENS.map((t, i) => {
+      {TOKENS.map(t => {
         const disabled = taken.includes(t.id);
         return (
           <button
@@ -17,7 +16,7 @@ export function TokenPicker({ value, onChange, taken = [] }: { value: string; on
             title={t.label}
             className={`flex flex-col items-center gap-1 rounded-xl border-2 p-2 text-2xl transition ${value === t.id ? 'border-py-blue bg-blue-50' : 'border-black/10 bg-white hover:border-black/30'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
           >
-            <PlayerToken token={t.id as TokenId} color={PLAYER_COLORS[i % PLAYER_COLORS.length]} size="44px" />
+            <span>{t.emoji}</span>
             <span className="text-[10px] font-semibold leading-tight text-center">{t.label}</span>
           </button>
         );

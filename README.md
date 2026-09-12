@@ -2,21 +2,10 @@
 
 Juego de compra-venta de propiedades estilo clásico, **ambientado en Paraguay**, para jugar **online de 2 a 6 personas** desde el navegador (PC o celular). Sin instalar nada: uno crea una sala, comparte el código o el link, y los demás entran.
 
-- **44 casillas** (28 propiedades, Impuesto al lujo, dos 🎰 Casinos a los lados y dos 🏟️ Arenas arriba y abajo) y 32 cartas con nombres y humor paraguayos; moneda en guaraníes.
+- 40 casillas, 28 propiedades y 32 cartas con nombres y humor paraguayos; moneda en guaraníes.
 - Reglas oficiales completas: subastas, alquileres dobles con grupo completo, construcción pareja, hipotecas al 110 %, cárcel (Tacumbú), intercambios, quiebra. Reglas caseras opcionales.
 - Servidor autoritativo (nadie puede hacer trampa), reconexión automática, chat, registro de jugadas, bots para rellenar.
 - Si alguien se va: el anfitrión puede reemplazarlo por un bot (recupera el control al volver) o sacarlo de la partida. Revancha con un botón. Ayuda de reglas dentro del juego, fichas que recorren el tablero y sonidos (con botón de silencio).
-- **Modo timba (opcional, se activa en el lobby):** Casinos con Ruleta 49/51 (carrete estilo apertura de caja), Quiniela, Doble o nada y Carrera de carretas; Jackpot que se lleva el doble seis; alquiler a doble o nada; y **desafíos** entre jugadores (duelo de dados, piedra-papel-tijera, trivia paraguaya con 172 preguntas, tereré caliente) por botón o por las cartas ¡Desafío!.
-- **Modo fiesta (opcional):** 🏟️ **La Arena** (al caer, todos juegan a la vez uno de **17 mini-juegos** votado entre 3 — Trivia relámpago, Caña dulce, Frená la barra, ¿Cuántos hay?, Palabra bomba con diccionario, Carrera de sapos, Duelo del Oeste, Esquivá el rayo, Penales, Ruleta rusa de globos, Adiviná el dibujo, Cartas contra el Paraguay, La foto borrosa, Ordená la cadena, Ruleta de la muerte, Plantá la bomba y Bingo relámpago — y el banco paga 300/150/50 mil; el más pobre dobla), 🎁 **Caja sorpresa** al pasar por Salida (carrete estilo "skin club", promedio ≈ ₲ 200.000), 🎯 **Misiones secretas** (3 por jugador, se pagan solas), 🌪️ **Eventos globales** (ruleta de 20 eventos cada vuelta completa de la mesa; 2 de cada 3 giros: tranquilidad) y 🔫 **Duelo mayor** (una ficha cada 3 vueltas para retar por hasta ₲ 500.000 a **Escopeta** —cartuchos de verdad y de fogueo, lupa, cerveza y esposas— o **Truco paraguayo** a 15 con envido, flor, truco, retruco y vale cuatro).
-- 📊 **Tabla en vivo** a la izquierda del tablero: intercambios propuestos/aceptados/rechazados con animación, "X está negociando con Y", dobles o nada, desafíos, premios de la Arena, duelos, cajas, eventos y misiones.
-- v1.5.0: **Blackjack como desafío** (el que desafía es la banca, el rival apuesta: pedir, plantarse o doblar; la banca pide hasta 17; blackjack paga 3 a 2; también entra al doble o nada del alquiler con el dueño de banca); **Bingo relámpago** en la Arena (cartón de 9, bolillas cada 1,4 s, marcar un número que no salió te tacha una marca, el primero en cantar BINGO gana; 17 mini-juegos); **animaciones**: las fichas saltan en arco con la sombra en el piso y rebotan al caer, los dados ruedan por la mesa con 7 trayectorias al azar, la carta de Suerte/Cooperativa vuela desde el mazo del tablero y se da vuelta — y la ficha **frena en la casilla de la carta** antes de seguir viaje, sin que la barra ofrezca comprar hasta que se leyó; **vista de mesa** opcional (🪑: tablero inclinado con casas y fichas paradas), marco de madera con luz alrededor del tablero, la casilla destella con el color del dueño al cobrar alquiler, polvito al construir, **podio final animado** con corona, confeti y premios de charla (el casero, el timbero, el preso, MVP de la Arena…), nombre del turno que entra deslizando, la ficha del panel se sacude cuando entra o sale plata; **trivia**: 310 preguntas (se quitaron 26 repetidas, se sumaron 62 de comida, guaraní, costumbres, deporte y ciudad), nunca dos del mismo molde seguidas y **opciones barajadas** (200 tenían la correcta en la primera opción); botón para **salir de pantalla completa**.
-- v1.4.0: **tablero repintado** — fichas paraguayas dibujadas a mano (guampa, chipa, ñandutí, carreta, jaguareté, arpa) con relieve y sombra en vez de emojis, casas y hoteles con volumen, mazos de cartas dibujados en las casillas de Suerte y Cooperativa, nombres que entran completos y **ninguna cosa encima de otra** (hay una prueba automática que lo verifica: `node e2e/tablero.mjs`); **dado ñandú** (tercer dado opcional, encendido por defecto: +1, +2, +3, 🚌 colectivo, 🎪 feria y ⚡ turbo) para que el tablero se reparta parejo — antes, en una partida corta, en la mitad de las partidas quedaba algún color sin pisar, ahora pasa en el 3 %; **Casino para todos** (cuando alguien cae se abre la mesa: el que cayó apuesta sí o sí y los demás pueden pasar); **metiche** en los intercambios (pagás ₲ 100.000 y ofrecés lo tuyo por lo mismo; el que propuso puede mejorar una vez y el dueño elige), con el tablero marcando en verde lo que recibís y en rojo lo que entregás; **truco a 3 manos** con verde "quiero" / rojo "no quiero", cartel grande del canto y cuánto vale cada cosa; se fue el **registro y el chat** y entraron **reacciones rápidas**; panel de jugadores con **títulos de propiedad en chico**; **pantalla completa** para agrandar el tablero; y arreglos: la **ruleta del Casino** frenaba en una celda que no era la del resultado (parecía que siempre se ganaba) y la tirada extra de los **servicios** pisaba los dados del centro (mostraba un número distinto al que moviste).
-- v1.3.5: el **tiempo por turno ya no corre durante los mini-juegos**, el Casino, las subastas, los desafíos ni los duelos (solo mientras te toca decidir en tu turno); **mucho más contenido y sin repetir en la misma partida** (274 preguntas de trivia, 71 de ¿Cuántos hay?, 66 imágenes borrosas, 43 cadenas, 61 frases y 151 cartas de humor); el **alquiler a doble o nada ahora se define en un mini-desafío** mano a mano en vez de una tirada de dados; el **Casino tiene ventaja de la casa** en las cuatro mesas (ruleta 43 %, quiniela y carrera con pagos más bajos, doble o nada se corta con el doble uno); **Palabra bomba con una sola vida** y mecha que se acorta con cada palabra; y las **cartas de Suerte/Cooperativa ya no se pisan**: hacen cola y se muestran una por una.
-- v1.3.4: **5 mini-juegos nuevos** en la Arena (16 en total): 🃏 Cartas contra el Paraguay (40 frases + 109 cartas con humor local, manos privadas, juez que rota), 🔍 La foto borrosa, 🔗 Ordená la cadena, 🔫 Ruleta de la muerte y 🧨 Plantá la bomba (saboteador vs. desactivadores). Los que necesitan 3+ jugadores no se ofrecen en partidas de dos. Arreglos visuales: nombres de los sapos que se pisaban, revelación de la cadena más clara, chips de estado con texto en vez de solo emojis.
-- v1.3.3: los carretes de la caja sorpresa y de la ruleta de eventos ahora sí se ven girar (arrancaban antes de estar en pantalla y quedaban congelados); prueba automática `node e2e/reels.mjs` que mide el movimiento.
-- v1.3.2: Carrera de sapos **vertical** (los sapos saltan solos y cada vez más rápido; vos solo cambiás de carril; charco = afuera); truco del duelo **a 2 manos**; en la Arena dobla el que tiene **menos efectivo** (también de a dos); saldos que ya no se quedan "trabados" al animarse; las fichas avanzan más despacio y la compra/alquiler/casilla aparece **recién cuando la ficha llega**; Escopeta con turno destacado e historial de cartuchos; explicación de globos y jackpot en pantalla.
-- Detalles v1.3.1: botón **Abrir caja** con fanfarria épica y giro de 3,5 s; ruleta de eventos como carrete de 6 s; cuenta regresiva 3-2-1 antes de cada mini-juego (reloj sincronizado con el servidor); trivia que muestra lo que respondió cada uno; ¿Cuántos hay? revela la respuesta; Duelo del Oeste con blanco + botón DISPARAR; duelo de dados con botón para tirar; Escopeta con ayuda y "¡BOOM!"; música de fondo suave (🎵 para apagarla); dados 3D corregidos dentro de los diálogos.
-- Animaciones: billetes que vuelan entre jugadores, saldos que cuentan, +/− flotantes, temblor en pagos grandes, confeti al completar un grupo o ganar, dados y cartas en 3D, rejas al ir preso, racha 🔥 de alquileres, carrete de la caja, ruleta de eventos, podio de la Arena.
 
 > Proyecto independiente y sin fines comerciales. "Monopoly" es una marca de Hasbro; Ñandepoly no usa su nombre, arte ni textos.
 
@@ -45,7 +34,7 @@ Tocá cualquier casilla del tablero para ver su título de propiedad completo (p
 
 ```bash
 pnpm install          # instala dependencias de los 3 paquetes
-pnpm test             # 74 tests del motor de reglas (incluye partidas completas simuladas)
+pnpm test             # 56 tests del motor de reglas (incluye partidas completas simuladas)
 pnpm build            # compila cliente (apps/web/dist) y servidor (apps/server/dist)
 pnpm start            # http://localhost:8080
 ```
@@ -118,10 +107,6 @@ Desventaja: si apagás la PC o se cae tu internet, la partida se corta hasta que
 | `ROOM_TTL_HOURS` | `6` | Horas sin nadie conectado tras las cuales se borra una sala. |
 | `AUCTION_SECONDS` | `20` | Segundos de inactividad para cerrar una subasta. |
 | `BOT_DELAY_MS` | `900` | Pausa entre acciones de los bots (para que se vean). |
-| `CHALLENGE_ACCEPT_SECONDS` | `15` | Tiempo para aceptar un desafío. |
-| `RENT_OFFER_SECONDS` | `20` | Tiempo para decidir en el alquiler a doble o nada. |
-| `CASINO_IDLE_SECONDS` | `75` | Inactividad máxima dentro del Casino. |
-| `DEBUG_TOOLS` | *(vacío)* | `1` habilita ganchos de prueba (fijar dados/posición) para las pruebas e2e. No usar en producción. |
 | `PUBLIC_DIR` | *(auto)* | Ruta al cliente compilado si no está en `apps/web/dist`. |
 | `LOG_LEVEL` | `info` | Nivel de log de Fastify/pino. |
 
@@ -132,10 +117,7 @@ Desventaja: si apagás la PC o se cae tu internet, la partida se corta hasta que
 ```
 nandepoly/
 ├── packages/engine/        Motor de reglas (TypeScript puro, sin dependencias)
-│   ├── src/board.ts        Las 44 casillas paraguayas con precios y alquileres
-│   ├── src/arena-data.ts   Mini-juegos de la Arena (16), eventos globales, misiones, premios de la caja,
-│   │                       cartas del juego de humor, imágenes borrosas y cadenas
-│   ├── src/truco.ts        Reglas del truco paraguayo 1 vs 1
+│   ├── src/board.ts        Las 40 casillas paraguayas con precios y alquileres
 │   ├── src/cards.ts        16 cartas Suerte + 16 Cooperativa
 │   ├── src/reducer.ts      Todas las reglas: applyAction(estado, acción) → nuevo estado
 │   ├── src/selectors.ts    Cálculos: alquiler, patrimonio, ¿puede construir?, etc.
@@ -162,32 +144,16 @@ Después de cambiar algo: `pnpm test && pnpm build` y volver a desplegar.
 
 ## Reglas caseras disponibles (las define el anfitrión en el lobby)
 
-Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial · **Casinos** (con apuesta máxima configurable) · **Jackpot** · **Alquiler a doble o nada** · **Desafíos** · **Duelo mayor** · **La Arena** · **Caja sorpresa** · **Misiones secretas** · **Eventos globales**.
-
-Todo lo de "timba" y "fiesta" viene apagado por defecto: sin tocar nada, la partida es la clásica (los Casinos y las Arenas son casillas de descanso).
-
-### Qué hace cada cosa nueva (v1.3)
-
-- **La Arena.** Dos casillas 🏟️. Se sortean 3 mini-juegos y se vota 8 s. Nadie apuesta: el banco paga ₲ 300.000 / 150.000 / 50.000 y, si gana el jugador de menor patrimonio, cobra doble. Palabra bomba acepta cualquier palabra del diccionario español (sin acentos, mayúsculas indistintas) más paraguayismos y palabras en guaraní. Carrera de sapos: pista vertical de 3 carriles, el sapo salta solo y acelera; flechas ← → o A/D en PC, dos botones en el celular; charco = afuera; máximo 25 s.
-- **Caja sorpresa.** Reemplaza el sueldo fijo de Salida: ₲ 100.000 a 500.000, casa gratis (con grupo completo), carta de cárcel, tirada extra o multa de ₲ 50.000. Promedio ≈ ₲ 200.000.
-- **Misiones secretas.** 3 por jugador de un catálogo de 30; solo el dueño ve el texto. Se controlan y pagan solas (₲ 100.000–300.000).
-- **Eventos globales.** Cada vuelta completa de la mesa gira la ruleta: 2 de cada 3 veces sale Tranquilidad; el resto dura una vuelta (Hora feliz, Paro de la ANDE, Inflación, Sequía, Corte de ruta, Ruta cortada, Boom inmobiliario, San Juan, Lotería, Noche de casino, Visita del presidente) o se aplica al instante (Aguinaldo, Control de la SET, Día del Niño, Amnistía, Mudanza, Cooperativa solidaria, Remate del banco, Terremoto).
-- **Duelo mayor.** Cada 3 vueltas ganás una ficha 🔫. En tu turno retás a alguien por ₲ 50.000–500.000; negarse cuesta ₲ 50.000. Escopeta (estilo "Buckshot Roulette", 3 vidas, ítems) o Truco paraguayo 1 a 1 a 15 puntos. Solo vos ves tu mano; la lupa solo te la muestra a vos.
+Pozo en Estacionamiento Libre · Doble sueldo al caer exacto en Salida · Sin subastas · Sin compras en la primera vuelta · Tiempo por turno (60/120/180 s, con decisiones por defecto al vencer) · Duración máxima de la partida (gana el de mayor patrimonio) · Efectivo inicial.
 
 ## Pruebas
 
 ```bash
-pnpm test                      # motor: 95 tests, incluye partidas completas con 2 y 6 jugadores y todas las opciones
+pnpm test                      # motor: 48 tests, incluye partidas completas con 2 y 6 jugadores
 pnpm build && pnpm start &     # levantar servidor
 pnpm e2e:bots                  # humano (script) + 5 bots juegan una partida entera por Socket.IO
 pnpm e2e                       # 6 navegadores reales juegan y uno se reconecta (requiere Chromium de Playwright)
 node e2e/features.mjs          # reemplazo por bot, sacar jugador, abandonar, fin de partida y revancha
-DEBUG_TOOLS=1 pnpm start &     # para la siguiente hace falta el servidor con ganchos de prueba
-node e2e/casino.mjs            # casino (ruleta, carrera, doble o nada), alquiler a doble o nada, trivia y piedra-papel-tijera
-node e2e/v13.mjs               # v1.3: caja sorpresa, Arena, duelos (Escopeta y Truco), ruleta de eventos, tabla en vivo
-node e2e/mobile.mjs            # capturas en celular
-MOBILE=1 node e2e/arena-game.mjs http://localhost:8080 e2e/arena cartas   # un mini-juego concreto de la Arena
-node e2e/reels.mjs             # verifica que los carretes (caja y ruleta de eventos) se mueven y frenan en el premio
 ```
 
 ## Problemas frecuentes

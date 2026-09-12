@@ -18,7 +18,7 @@ async function page() {
 }
 const clickIf = async (p, text) => {
   const btn = p.locator(`button:has-text("${text}"):not([disabled])`).first();
-  try { if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500, force: true }); return true; } } catch {}
+  try { if (await btn.count() && await btn.isVisible()) { await btn.click({ timeout: 1500 }); return true; } } catch {}
   return false;
 };
 
@@ -59,10 +59,10 @@ for (let i = 0; i < 60; i++) {
 await a.screenshot({ path: `${OUT}/panel-anfitrion.png` });
 
 // El anfitrión reemplaza a Mateo por un bot; Mateo cierra su pestaña
-const mateoCard = a.locator('[data-player-card]', { hasText: 'Mateo' }).first();
-await mateoCard.locator('button:has-text("Reemplazar por bot")').click({ force: true });
+const mateoCard = a.locator('.card', { hasText: 'Mateo' }).first();
+await mateoCard.locator('button:has-text("Reemplazar por bot")').click();
 await a.waitForSelector('text=Mateo ahora es controlado por un bot', { timeout: 5000 }).catch(() => {});
-ok(await a.locator('[data-player-card]', { hasText: 'Mateo' }).first().locator('text=Bot').count() > 0, 'Mateo reemplazado por bot');
+ok(await a.locator('.card', { hasText: 'Mateo' }).first().locator('text=Bot').count() > 0, 'Mateo reemplazado por bot');
 const mateoCtx = c.context();
 await c.close();
 // La partida sigue avanzando con el bot
@@ -85,21 +85,19 @@ await c2.waitForTimeout(800);
 ok((await a.locator('.card', { hasText: 'Mateo' }).first().locator('span:text-is("Bot")').count()) === 0, 'Mateo recuperó el control al volver');
 
 // Sofía abandona por su cuenta
-await d.click('button:has-text("Más")');
 await d.click('button:has-text("Abandonar partida")');
-await a.waitForFunction(() => window.__nandepoly.store.getState().events.some(e => /Sofía abandonó/.test(e.text)), null, { timeout: 8000, polling: 200 });
+await a.waitForSelector('text=Sofía abandonó la partida', { timeout: 5000 });
 ok(true, 'Sofía abandonó; sus propiedades van a subasta si tenía');
 for (let i = 0; i < 12; i++) { for (const p of [a, b, c2]) await clickIf(p, 'Me retiro'); await a.waitForTimeout(150); }
 
 // El anfitrión saca a Lucía
-await a.locator('[data-player-card]', { hasText: 'Lucía' }).first().locator('button:has-text("Sacar")').click({ force: true });
-await a.waitForFunction(() => window.__nandepoly.store.getState().events.some(e => /sacó a Lucía/.test(e.text)), null, { timeout: 8000, polling: 200 });
+await a.locator('.card', { hasText: 'Lucía' }).first().locator('button:has-text("Sacar")').click();
+await a.waitForSelector('text=sacó a Lucía', { timeout: 5000 });
 ok(true, 'anfitrión sacó a Lucía');
 for (let i = 0; i < 12; i++) { for (const p of [a, c2]) await clickIf(p, 'Me retiro'); await a.waitForTimeout(150); }
 await a.screenshot({ path: `${OUT}/despues-de-salidas.png` });
 
 // Terminar partida y revancha
-await a.click('button:has-text("Más")');
 await a.click('button:has-text("Terminar partida")');
 await a.waitForSelector('text=Revancha', { timeout: 5000 });
 await a.screenshot({ path: `${OUT}/fin-revancha.png` });
