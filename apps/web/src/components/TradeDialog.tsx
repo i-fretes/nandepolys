@@ -6,7 +6,11 @@ import Modal from './Modal';
 
 const empty = (): TradeSide => ({ cash: 0, properties: [], jailCards: 0 });
 
-/** Proponer un intercambio, y responder a propuestas recibidas. */
+/**
+ * Ventana para armar una oferta: proponer un intercambio, meterse de metiche o mejorar la propia.
+ * Las propuestas en curso (recibidas, enviadas, ajenas) se ven y se responden en el panel
+ * "Intercambios" de la columna izquierda (<TradesPanel />), no acá.
+ */
 export default function TradeDialog() {
   const open = useStore(s => s.dialog === 'trade');
   const setDialog = useStore(s => s.setDialog);
@@ -33,70 +37,25 @@ export default function TradeDialog() {
   const [butt, setButt] = useState<TradeSide>(empty());
   const [improve, setImprove] = useState<TradeSide | null>(null);
 
-  // Las propuestas que llegan esperan a que termine la carta / caja sorpresa / ruleta de eventos (nada encima de nada)
-  const fxBusy = useStore(s => !!s.cardModal || !!s.lootbox || !!s.eventSpin);
-  if (fxBusy && !open) return <Modal open={false} />;
+  // Propuesta recibida: se responde desde el panel Intercambios
+  if (pending && me && pending.toId === me.id) return <Modal open={false} />;
 
-  // Propuesta recibida: elijo entre la original y las de los metiches
-  if (pending && me && pending.toId === me.id) {
-    const offers = [pending, ...rivals];
-    return (
-      <Modal open width="max-w-3xl">
-        <h2 className="text-xl font-black">🤝 Te ofrecen por lo mismo{offers.length > 1 ? ` · ${offers.length} ofertas` : ''}</h2>
-        <div className="mt-1 text-sm text-ink/60">Vos entregás: <b>{sideText(pending.receive)}</b>. Elegí la oferta que más te convenga.</div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {offers.map(o => {
-            const from = state.players.find(p => p.id === o.fromId)!;
-            return (
-              <div key={o.id} className={`rounded-2xl border-2 p-3 ${o.butt ? 'border-amber-400 bg-amber-50' : 'border-emerald-500 bg-emerald-50'}`}>
-                <div className="flex items-center justify-between">
-                  <b>{from.name}</b>
-                  <span className={`chip ${o.butt ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'}`}>{o.butt ? '🕵️ metiche' : 'oferta original'}</span>
-                </div>
-                <SideView title="Te da" side={o.give} />
-                <button className="btn-green mt-2 w-full" onClick={() => act({ type: 'TRADE_ACCEPT', tradeId: o.id })}>Aceptar la de {from.name}</button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button className="btn-ghost" onClick={() => act({ type: 'TRADE_REJECT', tradeId: pending.id })}>Rechazar todas</button>
-        </div>
-      </Modal>
-    );
-  }
-
-  // Propuesta enviada
+  // Propuesta enviada: la ventana sólo sirve para mejorar la oferta (si se metió algún metiche)
   if (pending && me && pending.fromId === me.id) {
-    const to = state.players.find(p => p.id === pending.toId)!;
     const canImprove = rivals.length > 0 && !state.tradeImproved;
+    if (!open || !canImprove) return <Modal open={false} />;
     return (
-      <Modal open width="max-w-2xl">
-        <h2 className="text-xl font-black">🤝 Esperando respuesta de {to.name}…</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <SideView title="Le das" side={pending.give} />
-          <SideView title="Te da" side={pending.receive} />
+      <Modal open onClose={() => setDialog(null)} width="max-w-xl">
+        <h2 className="text-xl font-black">🤝 Mejorar mi oferta</h2>
+        <div className="mt-1 text-sm text-ink/70">Se {rivals.length === 1 ? 'metió un metiche' : `metieron ${rivals.length} metiches`}: {rivals.map(r => `${state.players.find(p => p.id === r.fromId)?.name} ofrece ${sideText(r.give)}`).join('; ')}. Podés mejorar tu oferta <b>una sola vez</b>.</div>
+        <div className="mt-3">
+          <SideEditor title={`Tu nueva oferta (tenés ${money(me.cash)})`} side={improve ?? pending.give} setSide={setImprove}
+            props={tradableFor(state, me.id)} maxCash={me.cash} maxCards={me.jailCards.length}
+            toggle={id => { const cur = improve ?? pending.give; setImprove({ ...cur, properties: cur.properties.includes(id) ? cur.properties.filter(x => x !== id) : [...cur.properties, id] }); }} />
         </div>
-        {rivals.length > 0 && (
-          <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
-            <b className="text-amber-900">🕵️ Se metieron {rivals.length === 1 ? 'de metiche' : `${rivals.length} metiches`}:</b>
-            <ul className="mt-1 list-inside list-disc text-sm">
-              {rivals.map(r => <li key={r.id}><b>{state.players.find(p => p.id === r.fromId)?.name}</b> ofrece {sideText(r.give)}</li>)}
-            </ul>
-            {canImprove && (
-              <>
-                <div className="mt-2 text-sm font-semibold">Podés mejorar tu oferta <b>una sola vez</b>:</div>
-                <SideEditor title={`Tu nueva oferta (tenés ${money(me.cash)})`} side={improve ?? pending.give} setSide={setImprove}
-                  props={tradableFor(state, me.id)} maxCash={me.cash} maxCards={me.jailCards.length}
-                  toggle={id => { const cur = improve ?? pending.give; setImprove({ ...cur, properties: cur.properties.includes(id) ? cur.properties.filter(x => x !== id) : [...cur.properties, id] }); }} />
-                <button className="btn-primary mt-2 w-full" disabled={!improve} onClick={() => act({ type: 'TRADE_IMPROVE', give: improve! })}>Mejorar mi oferta</button>
-              </>
-            )}
-            {!canImprove && state.tradeImproved && <div className="mt-1 text-xs text-amber-900/70">Ya mejoraste tu oferta una vez.</div>}
-          </div>
-        )}
-        <div className="mt-4 flex justify-end">
-          <button className="btn-ghost" onClick={() => act({ type: 'TRADE_CANCEL', tradeId: pending.id })}>Cancelar propuesta</button>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="btn-ghost" onClick={() => setDialog(null)}>Cerrar</button>
+          <button className="btn-primary" disabled={!improve} onClick={async () => { const ok = await act({ type: 'TRADE_IMPROVE', give: improve! }); if (ok) { setImprove(null); setDialog(null); } }}>Mejorar mi oferta</button>
         </div>
       </Modal>
     );
@@ -138,7 +97,7 @@ export default function TradeDialog() {
             <div className="mt-4 flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => setDialog(null)}>Mirar nomás</button>
               <button className="btn-primary" disabled={!butt.cash && !butt.properties.length && !butt.jailCards}
-                onClick={async () => { const ok = await act({ type: 'TRADE_BUTT_IN', give: butt }); if (ok) setButt(empty()); }}>
+                onClick={async () => { const ok = await act({ type: 'TRADE_BUTT_IN', give: butt }); if (ok) { setButt(empty()); setDialog(null); } }}>
                 🕵️ Meterme por {money(METICHE_FEE)}
               </button>
             </div>
@@ -149,6 +108,7 @@ export default function TradeDialog() {
   }
 
   if (!open || !me) return <Modal open={false} />;
+  if (pending) return <Modal open={false} />; // hay un trato en la mesa: se ve en el panel Intercambios
   const to = state.players.find(p => p.id === toId);
   const tradable = (pid: string) => BOARD.filter(isProperty).filter(t => state.properties[t.id].owner === pid)
     .filter(t => t.type !== 'street' || groupTiles(t.group).every(g => state.properties[g.id].houses === 0));
@@ -194,7 +154,7 @@ function tradableFor(state: { properties: Record<number, { owner: string | null;
 }
 
 /** Resumen de un lado del trato en una línea. */
-function sideText(side: TradeSide): string {
+export function sideText(side: TradeSide): string {
   return [side.cash ? money(side.cash) : null, ...side.properties.map(id => tile(id).name), side.jailCards ? `${side.jailCards} carta(s) de Tacumbú` : null]
     .filter(Boolean).join(' + ') || 'nada';
 }

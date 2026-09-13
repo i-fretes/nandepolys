@@ -1,47 +1,44 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 
-const FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-// Rotación que deja cada cara mirando al frente
-const SHOW: Record<number, string> = {
-  1: 'rotateX(0deg) rotateY(0deg)', 6: 'rotateX(0deg) rotateY(180deg)', 2: 'rotateX(0deg) rotateY(-90deg)',
-  5: 'rotateX(0deg) rotateY(90deg)', 3: 'rotateX(-90deg) rotateY(0deg)', 4: 'rotateX(90deg) rotateY(0deg)',
+// Posiciones de los puntos de cada cara (en una grilla de 3×3: 0..2)
+const PIPS: Record<number, [number, number][]> = {
+  1: [[1, 1]],
+  2: [[0, 0], [2, 2]],
+  3: [[0, 0], [1, 1], [2, 2]],
+  4: [[0, 0], [2, 0], [0, 2], [2, 2]],
+  5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]],
+  6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]],
 };
 
-/** Un dado en 3D que gira hasta mostrar la cara indicada. */
-export function Die3D({ value, rolling, size }: { value: number | null; rolling: boolean; size?: string }) {
-  const turns = useRef(0);
-  const [transform, setTransform] = useState(SHOW[1]);
+/**
+ * Dado plano y minimalista: cuadrado blanco redondeado con puntos oscuros. Mientras "rueda" las
+ * caras cambian al azar y el dado se sacude apenas; al frenar muestra el valor.
+ */
+export function Die({ value, rolling, size }: { value: number | null; rolling: boolean; size?: string }) {
+  const [shown, setShown] = useState<number | null>(value);
   useEffect(() => {
-    if (!value) return;
-    turns.current += 1;
-    const extra = `rotateX(${360 * turns.current}deg) rotateY(${360 * turns.current}deg) `;
-    setTransform(extra + SHOW[value]);
-  }, [value, rolling]);
+    if (!rolling) { setShown(value); return; }
+    const id = setInterval(() => setShown(1 + Math.floor(Math.random() * 6)), 90);
+    return () => { clearInterval(id); setShown(value); };
+  }, [rolling, value]);
+  const face = shown ?? value;
   const style = { ['--d' as string]: size ?? '6cqw' } as React.CSSProperties;
   return (
-    <div className={`die3d-scene ${rolling ? 'rolling' : ''}`} style={style}>
-      <div className="die3d" style={{ transform }}>
-        {[1, 2, 3, 4, 5, 6].map(n => (
-          <div key={n} className={`face f${n}`}>
-            {value ? FACES[n - 1] : <span className="opacity-30">?</span>}
-          </div>
-        ))}
-      </div>
+    <div className={`die ${rolling ? 'rolling' : ''} ${face ? '' : 'empty'}`} style={style} aria-label={face ? `Dado: ${face}` : 'Dado'}>
+      <svg viewBox="0 0 100 100" width="100%" height="100%">
+        {face ? PIPS[face].map(([x, y]) => <circle key={`${x}${y}`} cx={22 + x * 28} cy={22 + y * 28} r="8.5" className="pip" />) : <text x="50" y="60" textAnchor="middle" fontSize="44" fontWeight="800" opacity=".25">?</text>}
+      </svg>
     </div>
   );
 }
-
-/** Trayectorias de tiro: los dados entran rodando desde distintos lados y frenan en el centro. */
-const THROWS = ['throw-left', 'throw-right', 'throw-top', 'throw-bottom', 'throw-spin', 'throw-bounce', 'throw-cross'];
+/** Alias (los diálogos de casino, alquiler y desafíos importan este nombre). */
+export const Die3D = Die;
 
 export default function Dice() {
   const dice = useStore(s => s.state?.dice ?? null);
   const rollingUntil = useStore(s => s.rollingUntil);
   const [rolling, setRolling] = useState(false);
-  // Cada tirada elige una trayectoria distinta (al azar, pero fija durante esa tirada)
-  const throwKind = useRef(THROWS[0]);
-  useEffect(() => { if (rollingUntil > Date.now()) throwKind.current = THROWS[Math.floor(Math.random() * THROWS.length)]; }, [rollingUntil]);
 
   useEffect(() => {
     if (rollingUntil > Date.now()) {
@@ -52,9 +49,9 @@ export default function Dice() {
   }, [rollingUntil]);
 
   return (
-    <div className={`dice-stage ${rolling ? `rolling ${throwKind.current}` : ''}`}>
-      <div className="die-slot d1"><Die3D value={dice?.[0] ?? null} rolling={rolling} /></div>
-      {dice?.[1] !== 0 && <div className="die-slot d2"><Die3D value={dice?.[1] ?? null} rolling={rolling} /></div>}
+    <div className={`dice-stage ${rolling ? 'rolling' : ''}`}>
+      <div className="die-slot d1"><Die value={dice?.[0] ?? null} rolling={rolling} /></div>
+      {dice?.[1] !== 0 && <div className="die-slot d2"><Die value={dice?.[1] ?? null} rolling={rolling} /></div>}
     </div>
   );
 }

@@ -274,35 +274,16 @@ body {
 @keyframes drop { from { transform: translateY(-150%) scale(1.4); opacity: 0 } to { transform: none; opacity: 1 } }
 
 /* Dados 3D (tamaño en --d para que funcione tanto en el tablero como dentro de diálogos) */
-.die3d-scene { --d: 6cqw; width: var(--d); height: var(--d); perspective: calc(var(--d) * 6); }
-.die3d { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 1.1s cubic-bezier(.2,.9,.3,1.1); }
-.die3d .face { position: absolute; inset: 0; background: linear-gradient(145deg, #ffffff, #e5e7eb); border-radius: 12%; display: grid; place-items: center; font-size: calc(var(--d) * .85); line-height: 1; color: #1F2A37; box-shadow: inset 0 0 calc(var(--d) * .05) rgba(0,0,0,.12), inset 0 0 0 calc(var(--d) * .02) rgba(0,0,0,.08); }
-.die3d .f2, .die3d .f5 { background: linear-gradient(145deg, #f3f4f6, #d1d5db); } .die3d .f3, .die3d .f4 { background: linear-gradient(145deg, #fafafa, #e5e7eb); }
-.die3d .f1 { transform: rotateY(0deg) translateZ(calc(var(--d) / 2)); }
-.die3d .f6 { transform: rotateY(180deg) translateZ(calc(var(--d) / 2)); }
-.die3d .f2 { transform: rotateY(90deg) translateZ(calc(var(--d) / 2)); }
-.die3d .f5 { transform: rotateY(-90deg) translateZ(calc(var(--d) / 2)); }
-.die3d .f3 { transform: rotateX(90deg) translateZ(calc(var(--d) / 2)); }
-.die3d .f4 { transform: rotateX(-90deg) translateZ(calc(var(--d) / 2)); }
-.die3d-scene.rolling .die3d { animation: tumble .9s ease-out; }
-/* Los dados ruedan por la mesa: cada tirada entra por un lado distinto */
+/* Dados planos y minimalistas: cuadrado blanco redondeado con puntos; al rodar cambian de cara y se sacuden apenas */
+.die { --d: 6cqw; width: var(--d); height: var(--d); border-radius: 18%; background: #fffdf8; border: 1px solid rgba(31,42,55,.18);
+  box-shadow: 0 calc(var(--d) * .06) calc(var(--d) * .12) rgba(0,0,0,.18), inset 0 calc(var(--d) * -.04) 0 rgba(0,0,0,.05); display: grid; place-items: center; padding: 6%; }
+.die .pip { fill: #1F2A37; }
+.die.empty { background: #f6f1e7; border-style: dashed; box-shadow: none; }
+.die.rolling { animation: dieShake .55s ease-in-out infinite; }
+@keyframes dieShake { 0% { transform: translate(0, 0) rotate(0) } 25% { transform: translate(4%, -6%) rotate(-9deg) } 50% { transform: translate(-3%, 3%) rotate(7deg) } 75% { transform: translate(3%, 5%) rotate(-5deg) } 100% { transform: translate(0, 0) rotate(0) } }
 .dice-stage { display: flex; align-items: center; gap: 2cqw; }
 .die-slot { position: relative; }
-.dice-stage.rolling .die-slot { animation-duration: .95s; animation-timing-function: cubic-bezier(.15,.85,.3,1); animation-fill-mode: both; }
-.dice-stage.rolling .die-slot.d2 { animation-delay: .06s; }
-.dice-stage.throw-left .die-slot { animation-name: fromLeft; } .dice-stage.throw-right .die-slot { animation-name: fromRight; }
-.dice-stage.throw-top .die-slot { animation-name: fromTop; } .dice-stage.throw-bottom .die-slot { animation-name: fromBottom; }
-.dice-stage.throw-spin .die-slot { animation-name: spinIn; } .dice-stage.throw-bounce .die-slot { animation-name: bounceIn; }
-.dice-stage.throw-cross .die-slot.d1 { animation-name: fromLeft; } .dice-stage.throw-cross .die-slot.d2 { animation-name: fromRight; }
-@keyframes fromLeft { 0% { transform: translate(-28cqw, 6cqw) rotate(-540deg); opacity: 0 } 15% { opacity: 1 } 70% { transform: translate(1.5cqw, -1cqw) rotate(20deg) } 100% { transform: none } }
-@keyframes fromRight { 0% { transform: translate(28cqw, -6cqw) rotate(540deg); opacity: 0 } 15% { opacity: 1 } 70% { transform: translate(-1.5cqw, 1cqw) rotate(-20deg) } 100% { transform: none } }
-@keyframes fromTop { 0% { transform: translate(-6cqw, -24cqw) rotate(-400deg) scale(1.4); opacity: 0 } 15% { opacity: 1 } 55% { transform: translate(1cqw, 2cqw) rotate(30deg) scale(1) } 75% { transform: translate(0, -1.2cqw) rotate(-8deg) } 100% { transform: none } }
-@keyframes fromBottom { 0% { transform: translate(8cqw, 24cqw) rotate(420deg) scale(.7); opacity: 0 } 15% { opacity: 1 } 60% { transform: translate(-1cqw, -2cqw) rotate(-25deg) scale(1.05) } 100% { transform: none } }
-@keyframes spinIn { 0% { transform: rotate(0) scale(.2); opacity: 0 } 20% { opacity: 1 } 60% { transform: rotate(700deg) scale(1.25) } 100% { transform: rotate(720deg) scale(1) } }
-@keyframes bounceIn { 0% { transform: translateY(-22cqw) rotate(-200deg); opacity: 0 } 10% { opacity: 1 } 40% { transform: translateY(0) rotate(0) } 58% { transform: translateY(-7cqw) rotate(90deg) } 76% { transform: translateY(0) rotate(180deg) } 88% { transform: translateY(-2cqw) rotate(200deg) } 100% { transform: translateY(0) rotate(180deg) } }
-.die3d-scene.rolling { animation: dieHop .9s ease-out; }
-@keyframes dieHop { 0% { transform: translateY(0) } 30% { transform: translateY(-35%) } 60% { transform: translateY(-12%) } 100% { transform: translateY(0) } }
-@keyframes tumble { 0% { transform: rotateX(0) rotateY(0) } 30% { transform: rotateX(200deg) rotateY(160deg) rotateZ(40deg) } 60% { transform: rotateX(380deg) rotateY(320deg) rotateZ(-20deg) } 100% { transform: rotateX(360deg) rotateY(360deg) } }
+.dice-stage.rolling .die-slot.d2 .die { animation-delay: .12s; }
 
 .reaction { font-size: 21px; line-height: 1; padding: 4px 5px; border-radius: 10px; transition: transform .12s, background .12s; }
 .reaction:hover { transform: scale(1.25); background: rgba(0,0,0,.06); }

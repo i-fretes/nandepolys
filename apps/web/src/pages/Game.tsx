@@ -23,6 +23,7 @@ import DuelDialog from '../components/DuelDialog';
 import LootboxOverlay from '../components/LootboxOverlay';
 import EventWheel from '../components/EventWheel';
 import MissionsPanel from '../components/MissionsPanel';
+import TradesPanel from '../components/TradesPanel';
 import { HouseBackground, TableProps } from '../components/HouseScene';
 import { isMusicOn, isMuted, setMusicOn, setMuted, startMusic, stopMusic } from '../sound';
 import { useEffect, useRef, useState } from 'react';
@@ -91,6 +92,7 @@ export default function Game() {
       {/* Tabla en vivo (izquierda) */}
       <aside className="side-panel order-3 flex flex-col gap-3 lg:order-1 lg:h-full lg:w-[280px] lg:shrink-0 lg:overflow-hidden xl:w-[320px]">
         <div className="max-h-[40vh] lg:max-h-none lg:flex-1 lg:overflow-hidden"><LivePanel /></div>
+        <TradesPanel />
         <MissionsPanel />
       </aside>
       {/* Tablero */}

@@ -281,7 +281,11 @@ export const useStore = create<Store>((set, get) => ({
           if (get().cardModal || patch.cardModal) patch.cardQueue = [...(patch.cardQueue ?? get().cardQueue), card].slice(-6);
           else { patch.cardModal = card; sfx.card(); }
         }
-        if (e.type === 'trade_proposed' && view.state.pendingTrade?.toId === me) { toast('Te propusieron un intercambio', { icon: '🤝' }); sfx.notify(); }
+        if (e.type === 'trade_proposed' && view.state.pendingTrade?.toId === me) {
+          toast('Te propusieron un intercambio: mirá el panel Intercambios', { icon: '🤝' }); sfx.notify();
+          // En el celular el panel queda abajo del tablero: lo traemos a la vista
+          if (window.innerWidth < 1024) setTimeout(() => document.querySelector('[data-trades]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400);
+        }
         if (e.type === 'trade_proposed' && me && e.data?.from !== me && e.data?.to !== me) { toast('Hay un trato en la mesa: podés meterte de metiche', { icon: '🕵️', duration: 7000 }); sfx.notify(); }
         if (e.type === 'trade_butt_in') { toast(e.text, { icon: '🕵️', duration: 7000 }); sfx.notify(); }
         if (e.type === 'trade_improved') { toast(e.text, { icon: '💪', duration: 5000 }); }

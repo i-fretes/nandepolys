@@ -61,29 +61,31 @@ ok(marks.lose.includes('Villarrica'), `rojo (entrega) = Villarrica ${JSON.string
 await b.screenshot({ path: `${OUT}/2-brillo-lucia.png` });
 
 // Mateo se mete de metiche con 1.000.000
-await c.waitForSelector('button:has-text("Meterme")', { timeout: 8000 });
-await c.click('button:has-text("Meterme")', { force: true });
+await c.waitForSelector('[data-trades-other] button:has-text("Meterme")', { timeout: 8000 });
+await c.click('[data-trades-other] button:has-text("Meterme")', { force: true });
 await c.waitForSelector('text=Trato en la mesa');
 await dlg(c).locator('input[type=number]').first().fill('1000');
 await c.screenshot({ path: `${OUT}/3-metiche.png` });
 await dlg(c).locator('button:has-text("Meterme por")').click({ force: true });
 await c.waitForTimeout(800);
-ok(await c.locator('text=Ya te metiste').count() > 0, 'Mateo se metió');
+ok(await c.locator('[data-trades-other] :text("Tu oferta")').count() > 0, 'Mateo se metió (lo ve en su panel Intercambios)');
 
 // Ivan ve al metiche y mejora
-await a.waitForSelector('text=metiche', { timeout: 8000 });
-ok(await a.locator('text=Podés mejorar tu oferta').count() > 0, 'Ivan puede mejorar su oferta');
+await a.waitForSelector('[data-trades-mine] button:has-text("Mejorar")', { timeout: 8000 });
+ok(true, 'Ivan puede mejorar su oferta (botón en el panel)');
+await a.click('[data-trades-mine] button:has-text("Mejorar")', { force: true });
+await a.waitForSelector('text=Mejorar mi oferta');
 await dlg(a).locator('input[type=number]').first().fill('1200');
 await a.screenshot({ path: `${OUT}/4-mejorar.png` });
 await dlg(a).locator('button:has-text("Mejorar mi oferta")').click({ force: true });
 await a.waitForTimeout(700);
 
 // Lucía elige entre las dos
-await b.waitForSelector('text=ofertas', { timeout: 8000 });
-const textos = await dlg(b).allInnerTexts();
-ok(textos.join(' ').includes('metiche'), 'Lucía ve la oferta del metiche');
+await b.waitForFunction(() => [...document.querySelectorAll('[data-trades-incoming] button')].filter(x => /Aceptar/.test(x.textContent)).length >= 2, null, { timeout: 8000 });
+const textos = await b.locator('[data-trades-incoming]').allInnerTexts();
+ok(textos.join(' ').includes('metiche'), 'Lucía ve la oferta del metiche en el panel');
 await b.screenshot({ path: `${OUT}/5-elige-lucia.png` });
-await dlg(b).locator('button:has-text("Aceptar la de Mateo")').click({ force: true });
+await b.locator('[data-trades-incoming] .border-amber-300 button:has-text("Aceptar")').click({ force: true });
 await b.waitForTimeout(900);
 
 const owner = await b.evaluate(() => window.__nandepoly.store.getState().state.properties[10].owner);
