@@ -1,0 +1,10 @@
+# Alternativa a Fly.io: Render.com (Blueprint). Crear "New → Blueprint" apuntando al repo.
+services:
+  - type: web
+    name: nandepoly
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: ROOM_TTL_HOURS
+        value: "12"

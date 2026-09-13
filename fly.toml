@@ -1,0 +1,39 @@
+# Configuración para Fly.io — https://fly.io/docs
+# 1) fly launch --copy-config --no-deploy   2) fly volumes create nandepoly_data --size 1   3) fly deploy
+app = "nandepoly"
+primary_region = "gru"   # São Paulo: ~40 ms desde Paraguay
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  DATA_DIR = "/data"
+  ROOM_TTL_HOURS = "12"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"     # se apaga cuando nadie juega (no cobra)
+  auto_start_machines = true      # arranca solo al entrar alguien
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 500
+    soft_limit = 400
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/api/health"
+
+[mounts]
+  source = "nandepoly_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
